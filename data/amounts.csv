@@ -1,0 +1,90 @@
+insurer,product,tier,benefit,amount_rule,max_per_event,source_url,verified
+國泰產險,海外旅遊險-海外旅行不便保險,安心型(T5),旅程取消,最高60000元 (不含傳染病及檢疫),,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,安心型(T5),班機延誤,每4小時6000元; 至多申請2次,12000,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,安心型(T5),旅程更改,最高60000元 (不含傳染病及檢疫),,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,安心型(T5),行李延誤,定額6000元; 超過6小時,6000,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,安心型(T5),行李損失,定額6000元; 最多2次,6000,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,安心型(T5),旅行文件損失,定額3000元; 至多2次,3000,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,海外豪華型(U3),旅程取消,最高120000元 (不含傳染病及檢疫),,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,海外豪華型(U3),班機延誤,每4小時6000元; 至多申請2次,12000,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,海外豪華型(U3),旅程更改,最高120000元 (不含傳染病及檢疫),,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,海外豪華型(U3),行李延誤,定額6000元; 超過6小時,6000,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,海外豪華型(U3),行李損失,定額6000元; 最多2次,6000,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+國泰產險,海外旅遊險-海外旅行不便保險,海外豪華型(U3),旅行文件損失,定額3000元; 至多2次,3000,https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD1方案,班機延誤,累進式定額 每4小時6000元; 延誤4小時以上; 給付2次為限,12000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD1方案,行李延誤,定額6000元; 延誤6小時以上; 給付2次為限,6000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD1方案,旅程取消,實支實付 限額100000元,,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD1方案,旅程更改,實支實付 限額100000元,,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD1方案,行李損失,定額6000元; 給付2次為限,6000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD1方案,旅行文件損失,定額3000元; 給付2次為限,3000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD2方案,班機延誤,累進式定額 每4小時6000元; 延誤4小時以上; 給付2次為限,12000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD2方案,行李延誤,定額6000元; 延誤6小時以上; 給付2次為限,6000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD2方案,旅程取消,實支實付 限額100000元,,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD2方案,旅程更改,實支實付 限額100000元,,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD2方案,行李損失,定額6000元; 給付2次為限,6000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD2方案,旅行文件損失,定額3000元; 給付2次為限,3000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD3方案,班機延誤,累進式定額 每4小時6000元; 延誤4小時以上; 給付2次為限,12000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD3方案,行李延誤,定額6000元; 延誤6小時以上; 給付2次為限,6000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD3方案,旅程取消,實支實付 限額100000元,,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD3方案,旅程更改,實支實付 限額100000元,,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD3方案,行李損失,定額6000元; 給付2次為限,6000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD3方案,旅行文件損失,定額3000元; 給付2次為限,3000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD4方案,班機延誤,累進式定額 每4小時6000元; 延誤4小時以上; 給付2次為限,12000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD4方案,行李延誤,定額6000元; 延誤6小時以上; 給付2次為限,6000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD4方案,旅程取消,實支實付 限額100000元,,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD4方案,旅程更改,實支實付 限額100000元,,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD4方案,行李損失,定額6000元; 給付2次為限,6000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+富邦產險,富邦產物享樂個人海外旅行不便保險,PD4方案,旅行文件損失,定額3000元; 給付2次為限,3000,https://www.fubon.com/insurance/b2c/content/prod_travel/index1.html,yes
+新光產險,國外旅平險＋不便險,Easy方案,旅程取消,限額5000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,Easy方案,班機延誤,每滿四小時1000元; 保期內給付2次事故為限,2000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,Easy方案,旅程更改,限額5000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,Easy方案,行李延誤,每次2000元; 延誤6小時以上; 2次為限,2000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,Easy方案,行李損失,每次1000元; 2次為限,1000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,Easy方案,旅行文件損失,每次1000元; 2次為限,1000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,保障B方案,旅程取消,限額30000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,保障B方案,班機延誤,每滿四小時3000元; 保期內給付2次事故為限,6000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,保障B方案,旅程更改,限額30000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,保障B方案,行李延誤,每次3000元; 延誤6小時以上; 2次為限,3000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,保障B方案,行李損失,每次3000元; 2次為限,3000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,保障B方案,旅行文件損失,每次2000元; 2次為限,2000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,尊爵C方案,旅程取消,限額80000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,尊爵C方案,班機延誤,每滿四小時6000元; 保期內給付2次事故為限,12000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,尊爵C方案,旅程更改,限額60000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,尊爵C方案,行李延誤,每次6000元; 延誤6小時以上; 2次為限,6000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,尊爵C方案,行李損失,每次6000元; 2次為限,6000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,尊爵C方案,旅行文件損失,每次3000元; 2次為限,3000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,申根頂級方案,旅程取消,限額80000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,申根頂級方案,班機延誤,每滿四小時6000元; 保期內給付2次事故為限,12000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,申根頂級方案,旅程更改,限額60000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,申根頂級方案,行李延誤,每次6000元; 延誤6小時以上; 2次為限,6000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,申根頂級方案,行李損失,每次6000元; 2次為限,6000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,國外旅平險＋不便險,申根頂級方案,旅行文件損失,每次3000元; 2次為限,3000,https://www.sk858.com.tw/products/ta/default,yes
+新光產險,旅遊不便險(單售),單一方案,旅程取消,最高50000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default-inconvenience,yes
+新光產險,旅遊不便險(單售),單一方案,班機延誤,每滿四小時3000元; 保期內給付2次事故為限,6000,https://www.sk858.com.tw/products/ta/default-inconvenience,yes
+新光產險,旅遊不便險(單售),單一方案,旅程更改,最高20000元 (不含傳染病及檢疫),,https://www.sk858.com.tw/products/ta/default-inconvenience,yes
+新光產險,旅遊不便險(單售),單一方案,行李延誤,每次5000元; 延誤6小時以上; 2次為限,5000,https://www.sk858.com.tw/products/ta/default-inconvenience,yes
+新光產險,旅遊不便險(單售),單一方案,行李損失,每次5000元; 2次為限,5000,https://www.sk858.com.tw/products/ta/default-inconvenience,yes
+新光產險,旅遊不便險(單售),單一方案,旅行文件損失,每次2500元; 2次為限,2500,https://www.sk858.com.tw/products/ta/default-inconvenience,yes
+明台產險,國外旅遊險-海外旅行不便保險,經濟入門版,旅程取消,限額10000元,,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,經濟入門版,旅程更改,限額10000元,,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,經濟入門版,班機延誤,定額1000元 (頁面表格未列每滿幾小時之級距及每次上限),,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,經濟入門版,行李延誤,定額1000元,1000,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,經濟入門版,行李損失,定額1000元,1000,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,經濟入門版,旅行文件損失,定額1000元,1000,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,商務經典版,旅程取消,限額30000元,,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,商務經典版,旅程更改,限額30000元,,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,商務經典版,班機延誤,定額3000元 (頁面表格未列每滿幾小時之級距及每次上限),,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,商務經典版,行李延誤,定額3000元,3000,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,商務經典版,行李損失,定額3000元,3000,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,商務經典版,旅行文件損失,定額2000元,2000,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,頭等晶鑽版,旅程取消,限額50000元,,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,頭等晶鑽版,旅程更改,限額50000元,,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,頭等晶鑽版,班機延誤,定額6000元 (頁面表格未列每滿幾小時之級距及每次上限),,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,頭等晶鑽版,行李延誤,定額6000元,6000,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,頭等晶鑽版,行李損失,定額6000元,6000,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,頭等晶鑽版,旅行文件損失,定額3000元,3000,https://www.msig-mingtai.com.tw/ec/foreign-travel.html,yes
+明台產險,國外旅遊險-海外旅行不便保險,商務經典版,班機延誤,每延誤滿4小時3000元; 最高以保單所載保險金額為限(未列數字); 2次事故為限 (部落格舉例),,https://www.msig-mingtai.com.tw/MobileWeb/blog/insurance/travel-02/,yes
+華南產險,,,ALL,未取得: 靜態頁無金額(JS單頁應用/試算工具內),,https://www.ecover.com.tw/Travel/Coverage,no
+和泰產險,,,ALL,未取得: 靜態頁無金額(JS試算工具內),,https://ec2.hotains.com.tw/travel/insured?region=overseas,no
+臺灣產物,,,ALL,未取得: 試算頁靜態HTML無不便險金額,,https://ec.tfmi.com.tw/Active.ashx?a=St63Y,no
+兆豐產險,,,ALL,未取得: 靜態頁無金額(試算工具內),,https://ec.cki.com.tw/,no
