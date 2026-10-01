@@ -2,7 +2,7 @@
 
 This document explains how the system is put together and why. The [README](../README.md) covers what it is for, [DISCOVERY.md](DISCOVERY.md) covers where the requirements came from, and [CONTEXT.md](../CONTEXT.md) defines the terms used here (Clause, Condition, Alignment, Overlap, Verdict and others).
 
-Only splitting documents into Clauses (section 3.1) and the local model runtime (section 4) are implemented so far.
+Implemented so far: splitting documents into Clauses (section 3.1), importing a Product into a draft workbook and loading the reviewed workbook (section 3.2), and the local model runtime (section 4). Import extracts through the local-models port, which only the tests' scripted stand-in implements until the real adapter is built.
 
 ## 1. Constraints
 
@@ -79,12 +79,15 @@ The workbook is the contract between the model and everything after it. It has t
 | Product, Wording version | Cathay Century 享樂遊, new |
 | Benefit | flight delay |
 | Covered event | scheduled flight departs late |
-| Coverage requirements | scheduled flight, as a passenger, within the policy period |
-| Threshold | 4 hours |
+| Coverage requirements | scheduled flight; as a passenger (values from a fixed list per Benefit) |
+| Coverage window | the policy period, as the policy-period Clauses state it |
+| Threshold (hours) | 4 |
 | Delay-period rule | new-wording rule |
 | Benefit type | progressive fixed amount, one-off fixed amount, or reimbursement |
-| Step rule | for each full 4 hours |
+| Step (hours) | 4, that is for each full 4 hours |
+| Maximum claims per period | 2 |
 | Aggregate limit group | the Conditions that share one limit, if a Clause states one |
+| Eligible costs, cost maximums | for a reimbursement Condition |
 | Clause reference | 第三十條 |
 
 **Exclusions**, one row per excluded item, filled by extraction:
@@ -114,7 +117,20 @@ Exclusions get their own sheet because each one is judged and cited separately, 
 
 Amounts are entered by hand because clauses do not contain them and insurers publish them in incompatible layouts. For the public corpus they come from `data/amounts.csv`. Amounts for old wordings are no longer published, so those cells stay empty instead of borrowing current amounts.
 
-The column list is a starting point and will be adjusted when extraction is built.
+**Import** fills the Conditions and Exclusions sheets. It extracts from the general provisions (definitions, general exclusions and the policy period) and from the Clauses of each extracted Benefit: so far flight delay, the others following as they are judged or aligned. Every Clause goes to the model with the other Clauses of its chapter as context. The rest of the policy is stored and indexed but not extracted. Code, not the model, fills what follows from where a Clause sits:
+
+- The Condition key is the Benefit, plus a short covered-event label from extraction when a Benefit has several Conditions (trip cancellation / strike). A key that would repeat, or would be the bare name of a Benefit with several Conditions (which "applies to" reads as all of them), is numbered in Clause order, so the same extraction always gives the same keys.
+- An exclusion in a Benefit's own exclusion Clause applies to that Benefit's Conditions; a general exclusion (共同不保事項) applies to all. The reviewer only narrows.
+- The coverage window is the policy period as its Clauses state it, unless the Condition's own Clause names another window.
+- The delay-period rule defaults from the Wording version.
+
+The policy's Clauses go to the Clause store, a SQLite file, keyed by Product, Wording version and Clause number. A re-import of the same Product and Wording version replaces them, and never overwrites a workbook.
+
+**Confirmation.** The reviewer records who confirmed the workbook and when, above the Conditions table. A hidden, protected sheet keeps the values as extracted, with the Product and Wording version chosen at import.
+
+**Load** validates the whole workbook and lists every problem at once, in reading order: a missing confirmation record, a missing required field, a value outside its fixed list, a Clause reference not among the stored Clauses of that Product and Wording version, an exclusion that applies to an unknown Condition key, an exclusion type not on the list of a Benefit it applies to, a repeated or ambiguous Condition key, an Amounts row naming an unknown Condition key, or a row naming another Product. The rest of the Amounts sheet is checked once the Alignment table uses it. It returns the condition table only when there is no problem. It also counts the extracted fields and how many of them the reviewer changed, which is the extraction-accuracy figure. Every field import filled counts, by the model or by rule, except the Product and Wording version chosen at import: the reviewer checks them all. A reviewed row is matched to an extracted row by its Condition key (Clause reference for an exclusion), or failing that by its covered event (verbatim text), so sorting rows in Excel changes nothing. A deleted row counts all its fields as changed; an added row counts none.
+
+The column list may still be adjusted as more Benefits are extracted.
 
 ### 3.3 Alignment table
 
@@ -349,6 +365,9 @@ Decisions that are hard to reverse have their own records: [ADR 0001](adr/0001-h
 | pdfplumber to read PDFs | PyMuPDF, pypdf | Gives the character positions that two-column reading needs, under the MIT licence; PyMuPDF is AGPL. |
 | Exclusions as separate rows | a text cell on each Condition | Each exclusion is judged and cited on its own; old and new wording differ mostly here. |
 | Amounts entered by hand | parse plan tables | Layouts differ at every insurer and some publish none. |
+| SQLite file for the Clause store | Qdrant payloads, JSON files | Standard library, one file, and replacing a Product's Clauses is one transaction. The vector store indexes the same Clauses but is not the record of them. |
+| openpyxl for the workbook | xlsxwriter, pandas | Reads as well as writes .xlsx, which Load needs; xlsxwriter only writes. |
+| Values as extracted kept in a hidden sheet | a separate file | The workbook stays one file that carries its own baseline for counting the reviewer's changes. |
 | Retrieval within one Product | global top-k across insurers | A verdict is about one Product; global search lets long documents crowd out short ones. |
 | Qdrant embedded | Qdrant in Docker | One fewer service to install and to expose. |
 | No pause for user input | LangGraph `interrupt` with checkpointing | The human step moved to workbook confirmation; a missing fact is reported and the user asks again. |

@@ -4,7 +4,7 @@ A local agent that turns travel-inconvenience insurance clauses (旅遊不便險
 
 It runs entirely on one laptop with an 8 GB GPU. No document, prompt, or trace leaves the machine.
 
-**Status:** the design is settled and the public corpus is collected. The first piece of code lists the policies in a clause PDF, by rules and with no model; nothing after that is built yet. The full specification is [issue #1](https://github.com/matthewhoung/travel-claims-agent/issues/1), and the [roadmap](#roadmap) shows what comes next.
+**Status:** the design is settled and the public corpus is collected. The code lists the policies in a clause PDF by rules, with no model. It imports a policy as a Product into a draft workbook for review, and checks the reviewed workbook. Extraction goes through a local-models port, which so far only the tests' scripted stand-in implements; the adapter for the real local models is next. The full specification is [issue #1](https://github.com/matthewhoung/travel-claims-agent/issues/1), and the [roadmap](#roadmap) shows what comes next.
 
 ---
 
@@ -165,11 +165,13 @@ travel-claims-agent/
 ├── CONTEXT.md               # vocabulary: Clause, Condition, Alignment, Overlap, Verdict, ...
 ├── models.ini               # llama-server presets: Qwen3.5-9B and 4B
 ├── .env.example             # paths and air-gap switches; copy to .env
-├── src/travel_claims/       # the application: List policies so far
+├── src/travel_claims/       # the application: List policies, Import a Product, Load a workbook
 ├── tests/                   # fixtures/ holds page text captured from the clause PDFs
 ├── scripts/                 # model download, router, smoke test; capture_fixture.py for fixtures
 ├── results/smoke/           # one result file and router log per smoke-test run
 ├── models/                  # model weights, git-ignored
+├── store/                   # Clause store of imported Products, git-ignored
+├── workbooks/               # draft and confirmed workbooks, git-ignored
 ├── docs/
 │   ├── ARCHITECTURE.md      # pipeline, table layout, GPU scheduling, decision log
 │   ├── DISCOVERY.md         # where the requirements came from
@@ -276,6 +278,30 @@ uv run travel-claims list-policies data/clauses/cathay/travel-bundle.new-wording
 ```
 
 The document can also be page text already extracted from a PDF, with a form feed between pages, as `scripts/capture_fixture.py` or `pdftotext` writes it.
+
+### Importing a Product and confirming its workbook
+
+Import one policy of a document as a Product, naming it and confirming its Wording version. `--policy` is its number in the list above, or `--pages` gives the pages that hold it:
+
+```bash
+uv run travel-claims import data/clauses/cathay/travel-bundle.new-wording.pdf \
+  --policy 6 --product 享樂遊 --wording new
+```
+
+The local models extract the flight-delay Conditions and exclusions, and the general provisions, into a draft workbook, `workbooks/享樂遊.new.xlsx`. Import never overwrites a workbook. All of the policy's Clauses go to the Clause store in `store/`, which later steps cite and judge from. Until the real local-model adapter lands, `import` stops with a message saying the local models are not connected.
+
+A reviewer checks the workbook in Excel, corrects it, and records who confirmed it and when above the Conditions table. Load then lists every problem at once, such as a missing field, a Clause reference that is not among the stored Clauses, an exclusion that applies to an unknown Condition key, or a missing confirmation record. It also counts how many extracted fields the reviewer changed:
+
+```bash
+uv run travel-claims load workbooks/享樂遊.new.xlsx
+```
+
+```
+2 problems:
+Conditions!B1: Confirmed by is missing
+Conditions!B2: Confirmed on is missing
+32 fields extracted, 0 changed by the reviewer.
+```
 
 The remaining run commands will be documented here as the code lands.
 

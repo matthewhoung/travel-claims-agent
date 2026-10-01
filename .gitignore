@@ -9,3 +9,7 @@ __pycache__/
 # Model weights and the Hugging Face cache (scripts/download_models.py)
 /models/
 .env
+
+# The Clause store and the workbooks hold the customer's clause text.
+/store/
+/workbooks/
