@@ -135,8 +135,8 @@ Expected answers come mainly from third parties, not from the author.
 | Layer | Choice | Pinned |
 |---|---|---|
 | Inference engine | llama.cpp `llama-server`, router mode | build **b11277**, CUDA 12.8, `sm_89` |
-| LLM (primary) | Qwen3.5-9B, GGUF Q4_K_M | via `models.ini` |
-| LLM (baseline) | Qwen3.5-4B, GGUF Q4_K_M | via `models.ini` |
+| LLM (primary) | Qwen3.5-9B, GGUF Q4_K_M (unsloth), 8k context | commit and SHA-256 in `scripts/download_models.py`; served by `models.ini` |
+| LLM (baseline) | Qwen3.5-4B, GGUF Q4_K_M (unsloth), 8k context | as above |
 | Embedder | voyage-4-nano (open weights, Apache-2.0), 1024-d | HF revision in lockfile notes |
 | Reranker | bge-reranker-v2-m3 (CPU) | |
 | Vector store | Qdrant, embedded (no server, no Docker) | `uv.lock` |
@@ -147,7 +147,7 @@ Expected answers come mainly from third parties, not from the author.
 | PDF text | pdfplumber, read in two-column order | `uv.lock` |
 | Python | 3.12 installed by asdf; packages managed by uv | `.tool-versions`, `.python-version`, `uv.lock` |
 
-**Hardware:** RTX 4060 Laptop GPU (8 GB, about 7.1 GB free with the Windows desktop running), 16 cores, WSL2 Ubuntu 24.04 with 15 GB RAM.
+**Hardware:** RTX 4060 Laptop GPU (8 GB, 7.6 GB free with the Windows desktop running), 16 cores, WSL2 Ubuntu 24.04 with 15 GB RAM.
 
 ## Data
 
@@ -163,9 +163,13 @@ The corpus is public: 13 clause documents from 8 Taiwanese insurers, 6 ombudsman
 travel-claims-agent/
 ├── README.md
 ├── CONTEXT.md               # vocabulary: Clause, Condition, Alignment, Overlap, Verdict, ...
+├── models.ini               # llama-server presets: Qwen3.5-9B and 4B
+├── .env.example             # paths and air-gap switches; copy to .env
 ├── src/travel_claims/       # the application: List policies so far
 ├── tests/                   # fixtures/ holds page text captured from the clause PDFs
-├── scripts/                 # capture_fixture.py: page text of a PDF, for fixtures
+├── scripts/                 # model download, router, smoke test; capture_fixture.py for fixtures
+├── results/smoke/           # one result file and router log per smoke-test run
+├── models/                  # model weights, git-ignored
 ├── docs/
 │   ├── ARCHITECTURE.md      # pipeline, table layout, GPU scheduling, decision log
 │   ├── DISCOVERY.md         # where the requirements came from
@@ -177,7 +181,7 @@ travel-claims-agent/
     └── cases/               # ombudsman decisions and industry Q&A, git-ignored
 ```
 
-Model presets and the evaluation runner arrive with the roadmap steps.
+The evaluation runner arrives with the roadmap steps.
 
 ## Setup (WSL2)
 
@@ -201,6 +205,44 @@ cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89 -DCMAKE_BUILD_TYPE=R
 cmake --build build --config Release -j 6
 
 ~/tools/llama.cpp/build/bin/llama-server --list-devices   # expect CUDA0: RTX 4060 Laptop GPU
+```
+
+### Local models
+
+The weights (8.4 GB) are downloaded once into `models/`, at pinned commits, and checked by SHA-256. This is the only step that needs the network. The switches in `.env` keep everything after it offline.
+
+```bash
+cp .env.example .env                 # paths and air-gap switches
+python3 scripts/download_models.py   # Qwen3.5-9B and 4B, Q4_K_M
+scripts/serve_models.sh              # router on 127.0.0.1:8080, no model loaded
+```
+
+A request picks the model by name, `qwen3.5-9b` or `qwen3.5-4b`, through the OpenAI-compatible API. The router loads it on first use, unloading the other model first:
+
+```bash
+curl -s http://127.0.0.1:8080/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model": "qwen3.5-9b", "messages": [{"role": "user", "content": "你好"}]}'
+```
+
+### Hardware smoke test
+
+The smoke test settles, by measurement, whether the 9B fits at 8k context. It starts its own router, so stop a running one first.
+
+```bash
+python3 scripts/smoke_test.py        # writes results/smoke/<time>.json
+```
+
+It loads each model in turn and records VRAM peak, headroom (the least VRAM left free), load time, time to first token and decode speed. It also checks that the router starts with no model loaded, and that asking for the other model, in either direction, unloads the current one before the other loads. It passes when every model leaves at least 300 MiB free and the router checks hold. A failed run still writes its results file, saying what failed. Measured on this laptop ([results/smoke/](results/smoke/)):
+
+| Model, 8k context | VRAM peak | Headroom | Load time | Time to first token, full context | Decode |
+|---|---|---|---|---|---|
+| Qwen3.5-9B Q4_K_M | 5,690 MiB | 2,266 MiB | 1.9–2.8 s | 4.5 s | 39 tok/s |
+| Qwen3.5-4B Q4_K_M | 3,406 MiB | 4,550 MiB | 1.3–1.4 s | 3.0–3.1 s | 61–63 tok/s |
+
+The 9B passes, so it stays the primary model. A full-context prompt is 7,806 tokens. The speeds are for free-text replies with the model's default thinking; the JSON-schema-constrained output the application will use may be slower. The test also passes with no network at all, inside a namespace that has only a loopback interface:
+
+```bash
+unshare -rn sh -c 'ip link set lo up && python3 scripts/smoke_test.py'
 ```
 
 ### Python environment
@@ -235,11 +277,12 @@ uv run travel-claims list-policies data/clauses/cathay/travel-bundle.new-wording
 
 The document can also be page text already extracted from a PDF, with a form feed between pages, as `scripts/capture_fixture.py` or `pdftotext` writes it.
 
-Model download and the remaining run commands will be documented here as the code lands.
+The remaining run commands will be documented here as the code lands.
 
 ## Roadmap
 
 - [x] Inference engine built (llama.cpp b11277, GPU visible from WSL)
+- [x] Local model runtime: router presets, pinned weights, smoke test (the 9B fits at 8k context with 2.2 GB to spare)
 - [x] Requirements and design settled; public corpus collected
 - [ ] **Step 1:** split clause PDFs into clauses and import three insurers, two wordings each
 - [ ] **Step 2:** extract conditions and exclusions to Excel, review them, measure extraction accuracy

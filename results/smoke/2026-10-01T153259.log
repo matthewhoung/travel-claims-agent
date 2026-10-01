@@ -1,0 +1,245 @@
+0.00.002.973 I srv  llama_server: initializing ...
+0.00.120.976 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.123.819 I srv    operator(): Available models (2):
+0.00.123.841 I srv    operator():   [    preset] qwen3.5-4b
+0.00.123.842 I srv    operator():   [    preset] qwen3.5-9b
+0.00.123.913 W srv  llama_server: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.123.918 W srv  llama_server: security: router mode enabled - do not expose to untrusted environments
+0.00.123.920 I srv  llama_server: starting server in router mode. models will be automatically loaded on-demand
+0.00.128.702 I srv  llama_server: listening on http://127.0.0.1:8080
+0.00.128.721 W srv  llama_server: notice: server default port will be changed to :9931 in a future release (ref: https://github.com/ggml-org/llama.cpp/pull/26508)
+0.01.432.999 I srv          join: request for name=qwen3.5-9b queued at position 1
+0.01.433.030 I srv  ensure_model: waiting until model name=qwen3.5-9b is fully loaded...
+0.01.433.036 I srv  ensure_model: slot available, loading queued model name=qwen3.5-9b
+0.01.433.177 I srv          load: spawning server instance with name=qwen3.5-9b on port 40837
+0.01.433.231 I srv          load: spawning server instance with args:
+0.01.433.249 I srv          load:   /home/hong/tools/llama.cpp/build/bin/llama-server
+0.01.433.250 I srv          load:   --host
+0.01.433.250 I srv          load:   127.0.0.1
+0.01.433.251 I srv          load:   --port
+0.01.433.251 I srv          load:   40837
+0.01.433.251 I srv          load:   --alias
+0.01.433.252 I srv          load:   qwen3.5-9b
+0.01.433.252 I srv          load:   --ctx-size
+0.01.433.252 I srv          load:   8192
+0.01.433.252 I srv          load:   --fit
+0.01.433.253 I srv          load:   off
+0.01.433.253 I srv          load:   --model
+0.01.433.253 I srv          load:   models/qwen3.5-9b/Qwen3.5-9B-Q4_K_M.gguf
+0.01.433.253 I srv          load:   --n-gpu-layers
+0.01.433.254 I srv          load:   all
+0.01.433.254 I srv          load:   --parallel
+0.01.433.254 I srv          load:   1
+[40837] 0.00.062.145 I srv  llama_server: initializing ...
+[40837] 0.00.062.180 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+[40837] 0.00.062.516 W srv  llama_server: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+[40837] 
+[40837] 0.00.066.053 I srv    load_model: loading model 'models/qwen3.5-9b/Qwen3.5-9B-Q4_K_M.gguf'
+[40837] 
+[40837] 
+[40837] 
+[40837] 
+[40837] 0.01.765.369 I cmn          init: llama threadpool init, n_threads = 8
+[40837] 0.01.907.609 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+[40837] 0.01.911.499 I srv  llama_server: model loaded
+[40837] 0.01.911.531 I srv  llama_server: listening on http://127.0.0.1:40837
+[40837] 
+0.03.416.808 I srv  proxy_reques: proxying request to model qwen3.5-9b on port 40837
+[40837] 0.01.913.819 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+[40837] 0.01.913.916 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+[40837] 0.03.526.971 I slot print_timing: id  0 | task 0 | prompt eval time =     102.67 ms /    21 tokens (    4.89 ms per token,   204.53 tokens per second)
+[40837] 0.03.526.995 I slot print_timing: id  0 | task 0 |        eval time =    1510.28 ms /    64 tokens (   23.97 ms per token,    41.71 tokens per second)
+[40837] 0.03.526.996 I slot print_timing: id  0 | task 0 |       total time =    1612.95 ms /    85 tokens
+[40837] 0.03.527.010 I slot print_timing: id  0 | task 0 |    graphs reused =         63
+[40837] 0.03.527.071 I slot      release: id  0 | task 0 | stop processing: n_tokens = 84, truncated = 0
+0.05.033.300 I srv  proxy_reques: proxying request to model qwen3.5-9b on port 40837
+[40837] 0.03.530.414 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 1.000 (> 0.100 thold), f_keep = 0.250
+[40837] 0.03.627.820 I slot launch_slot_: id  0 | task 66 | processing task, is_child = 0
+[40837] 0.05.211.311 I slot print_timing: id  0 | task 66 | prompt eval time =      71.36 ms /    21 tokens (    3.40 ms per token,   294.27 tokens per second)
+[40837] 0.05.211.332 I slot print_timing: id  0 | task 66 |        eval time =    1512.04 ms /    64 tokens (   24.00 ms per token,    41.67 tokens per second)
+[40837] 0.05.211.332 I slot print_timing: id  0 | task 66 |       total time =    1583.40 ms /    85 tokens
+[40837] 0.05.211.333 I slot print_timing: id  0 | task 66 |    graphs reused =        125
+[40837] 0.05.211.350 I slot      release: id  0 | task 66 | stop processing: n_tokens = 84, truncated = 0
+0.06.717.296 I srv  proxy_reques: proxying request to model qwen3.5-9b on port 40837
+0.06.719.156 I srv  proxy_reques: proxying request to model qwen3.5-9b on port 40837
+0.06.724.983 I srv  proxy_reques: proxying request to model qwen3.5-9b on port 40837
+0.06.726.727 I srv  proxy_reques: proxying request to model qwen3.5-9b on port 40837
+[40837] 0.05.229.957 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 22986933969
+[40837] 0.05.230.072 I slot launch_slot_: id  0 | task 132 | processing task, is_child = 0
+[40837] 0.08.457.894 I slot print_timing: id  0 | task 132 | prompt processing, n_tokens =   6144, progress = 0.79, t =   3.23 s / 1903.74 tokens per second
+[40837] 0.09.302.218 I slot print_timing: id  0 | task 132 | prompt processing, n_tokens =   7290, progress = 0.93, t =   4.07 s / 1790.27 tokens per second
+[40837] 0.09.427.607 I slot print_timing: id  0 | task 132 | prompt processing, n_tokens =   7802, progress = 1.00, t =   4.20 s / 1858.75 tokens per second
+[40837] 0.12.728.418 I slot print_timing: id  0 | task 132 | n_gen =    119, tg =  39.18 t/s, tg_3s =  39.51 t/s
+[40837] 0.15.730.561 I slot print_timing: id  0 | task 132 | n_gen =    239, tg =  39.58 t/s, tg_3s =  39.97 t/s
+[40837] 0.16.158.765 I slot print_timing: id  0 | task 132 | prompt eval time =    4486.58 ms /  7806 tokens (    0.57 ms per token,  1739.85 tokens per second)
+[40837] 0.16.158.787 I slot print_timing: id  0 | task 132 |        eval time =    6441.99 ms /   256 tokens (   25.26 ms per token,    39.58 tokens per second)
+[40837] 0.16.158.789 I slot print_timing: id  0 | task 132 |       total time =   10928.57 ms /  8062 tokens
+[40837] 0.16.158.791 I slot print_timing: id  0 | task 132 |    graphs reused =        378
+[40837] 0.16.158.941 I slot      release: id  0 | task 132 | stop processing: n_tokens = 8061, truncated = 0
+0.17.667.839 I srv          join: request for name=qwen3.5-4b queued at position 1
+0.17.667.861 I srv          tick: evicting idle LRU name=qwen3.5-9b for a queued request
+0.17.667.892 I srv  ensure_model: waiting until model name=qwen3.5-4b is fully loaded...
+[40837] 0.16.163.199 I srv    operator(): exit command received, exiting...
+[40837] 0.16.163.392 I srv    operator(): operator(): cleaning up before exit...
+0.17.955.148 I srv           run: instance name=qwen3.5-9b exited with status 0
+0.17.955.172 I srv  ensure_model: slot available, loading queued model name=qwen3.5-4b
+0.17.955.262 I srv          load: spawning server instance with name=qwen3.5-4b on port 38231
+0.17.955.291 I srv          load: spawning server instance with args:
+0.17.955.311 I srv          load:   /home/hong/tools/llama.cpp/build/bin/llama-server
+0.17.955.312 I srv          load:   --host
+0.17.955.312 I srv          load:   127.0.0.1
+0.17.955.312 I srv          load:   --port
+0.17.955.312 I srv          load:   38231
+0.17.955.312 I srv          load:   --alias
+0.17.955.312 I srv          load:   qwen3.5-4b
+0.17.955.312 I srv          load:   --ctx-size
+0.17.955.312 I srv          load:   8192
+0.17.955.312 I srv          load:   --fit
+0.17.955.313 I srv          load:   off
+0.17.955.313 I srv          load:   --model
+0.17.955.313 I srv          load:   models/qwen3.5-4b/Qwen3.5-4B-Q4_K_M.gguf
+0.17.955.313 I srv          load:   --n-gpu-layers
+0.17.955.313 I srv          load:   all
+0.17.955.313 I srv          load:   --parallel
+0.17.955.314 I srv          load:   1
+[38231] 0.00.067.164 I srv  llama_server: initializing ...
+[38231] 0.00.067.204 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+[38231] 0.00.067.538 W srv  llama_server: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+[38231] 
+[38231] 0.00.070.920 I srv    load_model: loading model 'models/qwen3.5-4b/Qwen3.5-4B-Q4_K_M.gguf'
+[38231] 
+[38231] 
+[38231] 
+[38231] 0.01.217.582 I cmn          init: llama threadpool init, n_threads = 8
+[38231] 0.01.307.024 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+[38231] 0.01.311.106 I srv  llama_server: model loaded
+[38231] 0.01.311.141 I srv  llama_server: listening on http://127.0.0.1:38231
+[38231] 
+0.19.302.685 I srv  proxy_reques: proxying request to model qwen3.5-4b on port 38231
+[38231] 0.01.314.200 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+[38231] 0.01.314.301 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+[38231] 0.02.330.938 I slot print_timing: id  0 | task 0 | prompt eval time =      78.10 ms /    21 tokens (    3.72 ms per token,   268.90 tokens per second)
+[38231] 0.02.330.959 I slot print_timing: id  0 | task 0 |        eval time =     938.46 ms /    64 tokens (   14.90 ms per token,    67.13 tokens per second)
+[38231] 0.02.330.959 I slot print_timing: id  0 | task 0 |       total time =    1016.55 ms /    85 tokens
+[38231] 0.02.330.966 I slot print_timing: id  0 | task 0 |    graphs reused =         63
+[38231] 0.02.331.001 I slot      release: id  0 | task 0 | stop processing: n_tokens = 84, truncated = 0
+0.20.324.117 I srv        unload: stopping model instance name=qwen3.5-4b
+[38231] 0.02.333.429 I srv    operator(): exit command received, exiting...
+[38231] 0.02.333.572 I srv    operator(): operator(): cleaning up before exit...
+0.20.554.681 I srv           run: instance name=qwen3.5-4b exited with status 0
+0.21.727.943 I srv          join: request for name=qwen3.5-4b queued at position 1
+0.21.727.971 I srv  ensure_model: waiting until model name=qwen3.5-4b is fully loaded...
+0.21.727.973 I srv  ensure_model: slot available, loading queued model name=qwen3.5-4b
+0.21.728.014 I srv          load: spawning server instance with name=qwen3.5-4b on port 57653
+0.21.728.035 I srv          load: spawning server instance with args:
+0.21.728.035 I srv          load:   /home/hong/tools/llama.cpp/build/bin/llama-server
+0.21.728.035 I srv          load:   --host
+0.21.728.036 I srv          load:   127.0.0.1
+0.21.728.036 I srv          load:   --port
+0.21.728.036 I srv          load:   57653
+0.21.728.036 I srv          load:   --alias
+0.21.728.036 I srv          load:   qwen3.5-4b
+0.21.728.036 I srv          load:   --ctx-size
+0.21.728.036 I srv          load:   8192
+0.21.728.036 I srv          load:   --fit
+0.21.728.036 I srv          load:   off
+0.21.728.036 I srv          load:   --model
+0.21.728.036 I srv          load:   models/qwen3.5-4b/Qwen3.5-4B-Q4_K_M.gguf
+0.21.728.037 I srv          load:   --n-gpu-layers
+0.21.728.037 I srv          load:   all
+0.21.728.037 I srv          load:   --parallel
+0.21.728.037 I srv          load:   1
+[57653] 0.00.060.432 I srv  llama_server: initializing ...
+[57653] 0.00.060.479 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+[57653] 0.00.060.869 W srv  llama_server: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+[57653] 
+[57653] 0.00.064.363 I srv    load_model: loading model 'models/qwen3.5-4b/Qwen3.5-4B-Q4_K_M.gguf'
+[57653] 
+[57653] 
+[57653] 
+[57653] 0.01.184.700 I cmn          init: llama threadpool init, n_threads = 8
+[57653] 0.01.272.172 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+[57653] 0.01.275.648 I srv  llama_server: model loaded
+[57653] 0.01.275.672 I srv  llama_server: listening on http://127.0.0.1:57653
+[57653] 
+0.23.036.376 I srv  proxy_reques: proxying request to model qwen3.5-4b on port 57653
+[57653] 0.01.277.771 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+[57653] 0.01.277.850 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+[57653] 0.02.491.979 I slot print_timing: id  0 | task 0 | prompt eval time =      99.82 ms /    21 tokens (    4.75 ms per token,   210.38 tokens per second)
+[57653] 0.02.492.005 I slot print_timing: id  0 | task 0 |        eval time =     932.15 ms /    64 tokens (   14.80 ms per token,    67.59 tokens per second)
+[57653] 0.02.492.006 I slot print_timing: id  0 | task 0 |       total time =    1031.97 ms /    85 tokens
+[57653] 0.02.492.020 I slot print_timing: id  0 | task 0 |    graphs reused =         63
+[57653] 0.02.492.094 I slot      release: id  0 | task 0 | stop processing: n_tokens = 84, truncated = 0
+0.24.253.657 I srv  proxy_reques: proxying request to model qwen3.5-4b on port 57653
+[57653] 0.02.495.372 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 1.000 (> 0.100 thold), f_keep = 0.250
+[57653] 0.02.557.500 I slot launch_slot_: id  0 | task 66 | processing task, is_child = 0
+[57653] 0.03.546.188 I slot print_timing: id  0 | task 66 | prompt eval time =      55.09 ms /    21 tokens (    2.62 ms per token,   381.17 tokens per second)
+[57653] 0.03.546.211 I slot print_timing: id  0 | task 66 |        eval time =     933.51 ms /    64 tokens (   14.82 ms per token,    67.49 tokens per second)
+[57653] 0.03.546.212 I slot print_timing: id  0 | task 66 |       total time =     988.61 ms /    85 tokens
+[57653] 0.03.546.213 I slot print_timing: id  0 | task 66 |    graphs reused =        125
+[57653] 0.03.546.230 I slot      release: id  0 | task 66 | stop processing: n_tokens = 84, truncated = 0
+0.25.308.431 I srv  proxy_reques: proxying request to model qwen3.5-4b on port 57653
+0.25.311.282 I srv  proxy_reques: proxying request to model qwen3.5-4b on port 57653
+0.25.319.209 I srv  proxy_reques: proxying request to model qwen3.5-4b on port 57653
+0.25.320.744 I srv  proxy_reques: proxying request to model qwen3.5-4b on port 57653
+[57653] 0.03.569.208 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 23005342174
+[57653] 0.03.569.322 I slot launch_slot_: id  0 | task 132 | processing task, is_child = 0
+[57653] 0.09.676.830 I slot print_timing: id  0 | task 132 | n_gen =    184, tg =  61.00 t/s, tg_3s =  61.33 t/s
+[57653] 0.10.843.488 I slot print_timing: id  0 | task 132 | prompt eval time =    3107.41 ms /  7806 tokens (    0.40 ms per token,  2512.06 tokens per second)
+[57653] 0.10.843.509 I slot print_timing: id  0 | task 132 |        eval time =    4166.69 ms /   256 tokens (   16.34 ms per token,    61.20 tokens per second)
+[57653] 0.10.843.510 I slot print_timing: id  0 | task 132 |       total time =    7274.10 ms /  8062 tokens
+[57653] 0.10.843.511 I slot print_timing: id  0 | task 132 |    graphs reused =        378
+[57653] 0.10.843.634 I slot      release: id  0 | task 132 | stop processing: n_tokens = 8061, truncated = 0
+0.32.606.243 I srv          join: request for name=qwen3.5-9b queued at position 1
+0.32.606.260 I srv          tick: evicting idle LRU name=qwen3.5-4b for a queued request
+0.32.606.279 I srv  ensure_model: waiting until model name=qwen3.5-9b is fully loaded...
+[57653] 0.10.846.105 I srv    operator(): exit command received, exiting...
+[57653] 0.10.846.269 I srv    operator(): operator(): cleaning up before exit...
+0.32.879.878 I srv           run: instance name=qwen3.5-4b exited with status 0
+0.32.879.932 I srv  ensure_model: slot available, loading queued model name=qwen3.5-9b
+0.32.880.091 I srv          load: spawning server instance with name=qwen3.5-9b on port 55325
+0.32.880.177 I srv          load: spawning server instance with args:
+0.32.880.196 I srv          load:   /home/hong/tools/llama.cpp/build/bin/llama-server
+0.32.880.197 I srv          load:   --host
+0.32.880.197 I srv          load:   127.0.0.1
+0.32.880.197 I srv          load:   --port
+0.32.880.198 I srv          load:   55325
+0.32.880.198 I srv          load:   --alias
+0.32.880.199 I srv          load:   qwen3.5-9b
+0.32.880.199 I srv          load:   --ctx-size
+0.32.880.199 I srv          load:   8192
+0.32.880.199 I srv          load:   --fit
+0.32.880.199 I srv          load:   off
+0.32.880.199 I srv          load:   --model
+0.32.880.200 I srv          load:   models/qwen3.5-9b/Qwen3.5-9B-Q4_K_M.gguf
+0.32.880.200 I srv          load:   --n-gpu-layers
+0.32.880.200 I srv          load:   all
+0.32.880.200 I srv          load:   --parallel
+0.32.880.200 I srv          load:   1
+[55325] 0.00.055.616 I srv  llama_server: initializing ...
+[55325] 0.00.055.653 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+[55325] 0.00.056.009 W srv  llama_server: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+[55325] 
+[55325] 0.00.059.511 I srv    load_model: loading model 'models/qwen3.5-9b/Qwen3.5-9B-Q4_K_M.gguf'
+[55325] 
+[55325] 
+[55325] 
+[55325] 
+[55325] 0.01.652.321 I cmn          init: llama threadpool init, n_threads = 8
+[55325] 0.01.769.690 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+[55325] 0.01.773.288 I srv  llama_server: model loaded
+[55325] 0.01.773.314 I srv  llama_server: listening on http://127.0.0.1:55325
+[55325] 
+0.34.701.055 I srv  proxy_reques: proxying request to model qwen3.5-9b on port 55325
+[55325] 0.01.775.546 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+[55325] 0.01.775.625 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+[55325] 0.03.421.774 I slot print_timing: id  0 | task 0 | prompt eval time =      97.86 ms /    21 tokens (    4.66 ms per token,   214.59 tokens per second)
+[55325] 0.03.421.802 I slot print_timing: id  0 | task 0 |        eval time =    1548.18 ms /    64 tokens (   24.57 ms per token,    40.69 tokens per second)
+[55325] 0.03.421.803 I slot print_timing: id  0 | task 0 |       total time =    1646.05 ms /    85 tokens
+[55325] 0.03.421.817 I slot print_timing: id  0 | task 0 |    graphs reused =         63
+[55325] 0.03.421.878 I slot      release: id  0 | task 0 | stop processing: n_tokens = 84, truncated = 0
+[55325] 0.03.424.738 I srv    operator(): operator(): cleaning up before exit...
+0.36.353.346 I srv    operator(): operator(): cleaning up before exit...
+0.36.353.520 I srv    unload_all: stopping model instance name=qwen3.5-9b
+[55325] 0.03.426.332 I srv    operator(): exit command received, exiting...
+0.36.667.285 I srv           run: instance name=qwen3.5-9b exited with status 0

@@ -2,7 +2,7 @@
 
 This document explains how the system is put together and why. The [README](../README.md) covers what it is for, [DISCOVERY.md](DISCOVERY.md) covers where the requirements came from, and [CONTEXT.md](../CONTEXT.md) defines the terms used here (Clause, Condition, Alignment, Overlap, Verdict and others).
 
-Only splitting documents into Clauses (section 3.1) is implemented so far. Figures marked as estimates will be replaced by measurements.
+Only splitting documents into Clauses (section 3.1) and the local model runtime (section 4) are implemented so far.
 
 ## 1. Constraints
 
@@ -10,7 +10,7 @@ Only splitting documents into Clauses (section 3.1) is implemented so far. Figur
 |---|---|
 | The customer's documents are unpublished drafts that may not leave the machine | No cloud APIs, no hosted tracing, no network at runtime |
 | The user needs comparisons that do not depend on one reader's interpretation | The model extracts; a person confirms; code computes |
-| One laptop GPU, 8 GB (about 7.1 GB usable with Windows running) | Models cannot all sit on the GPU together; the GPU is time-shared |
+| One laptop GPU, 8 GB (7.6 GB free with the Windows desktop running) | Models cannot all sit on the GPU together; the GPU is time-shared |
 | WSL2 on a Windows host | Project and models must live on the WSL filesystem; the GPU is shared with the Windows desktop |
 | Proof of concept, single user | Sequential requests; no auth, no multi-tenancy |
 
@@ -241,27 +241,35 @@ The GPU has one tenant at a time. There are three modes and they never overlap.
 
 Indexing runs as its own process so that when it exits, all of PyTorch's cached GPU memory and the CUDA context go with it. Deleting a model inside a long-running Python process leaves a few hundred MB behind.
 
-**VRAM budget, query mode** (estimates until the smoke test measures them):
+**VRAM budget, query mode**, measured by the smoke test (`scripts/smoke_test.py`) with Qwen3.5-9B at 8k context and a prompt that fills it:
 
-| Item | MB | Source |
+| Item | MiB | Source |
 |---|---|---|
-| Total | 8,187 | `--list-devices` |
-| Windows desktop and other apps | ~1,100 | measured: 7,096 MB free |
-| Qwen3.5-9B Q4_K_M weights | ~5,100 | published figure |
-| KV cache + compute buffers at 8k context | TBD | smoke test |
-| **Headroom target** | **≥ 300** | pass criterion |
+| Total | 8,188 | NVML |
+| In use before the model loads (Windows desktop and other apps) | 294 | NVML |
+| Qwen3.5-9B Q4_K_M weights on the GPU | 4,861 | llama.cpp load log |
+| KV cache at 8,192 tokens (8 full-attention layers of 32) | 256 | llama.cpp load log |
+| Recurrent state of the linear-attention layers | 50 | llama.cpp load log |
+| Compute buffers | 96 | llama.cpp load log |
+| CUDA context and pools | ~130 | the rest of the peak |
+| **Peak in use** | **5,690** | NVML, sampled every 20 ms |
+| **Headroom** (least free during the run) | **2,266** | pass criterion ≥ 300 |
 
-Qwen3.5 uses a hybrid attention stack (three linear-attention layers per full-attention layer), so its KV cache grows much more slowly with context than a standard transformer's. That is the main reason 9B at 8k context is plausible on this card at all.
+The 9B fits with room to spare, so it stays the primary model at 8k context. The 4B at the same context peaks at 3,406 MiB. Results of each run are in `results/smoke/`.
+
+- **The weights take less than the file.** The 5.3 GiB file includes the 546 MiB token-embedding table, which llama.cpp keeps in CPU memory.
+- **The KV cache is small.** Qwen3.5 uses a hybrid attention stack (three linear-attention layers per full-attention layer), so only 8 of its 32 layers keep a KV cache.
+- **Measure with NVML, not CUDA.** Under WSL, the free memory CUDA reports ignores other processes: a new process sees 7,096 MiB free whether or not another process holds the 9B. NVML, the library `nvidia-smi` reads, reports the whole GPU and agrees with llama.cpp's own buffer sizes to within the CUDA context. The smoke test calls it in-process, because `nvidia-smi` buffers its output when piped and its samples arrive late.
 
 ### 4.4 Model lifecycle (router mode)
 
 llama-server starts **without** a model. The router reads `models.ini`, and each section defines one model. The first request that names a model loads it. With `--models-max 1`, requesting the other model unloads the current one first.
 
 ```ini
-; models.ini (sketch)
+; models.ini (comments trimmed)
 [*]
-n-gpu-layers = 99
-jinja = 1
+n-gpu-layers = all
+fit = off
 parallel = 1
 
 [qwen3.5-9b]
@@ -270,12 +278,16 @@ ctx-size = 8192
 
 [qwen3.5-4b]
 model = models/qwen3.5-4b/Qwen3.5-4B-Q4_K_M.gguf
-ctx-size = 16384
+ctx-size = 8192
 ```
 
-The router is launched with `--models-preset models.ini --models-max 1 --host 127.0.0.1`. Models are listed explicitly in the preset rather than discovered with `--models-dir`, because `models/` also contains non-GGUF files (`hf/`) and explicit paths make the setup reviewable.
+`scripts/serve_models.sh` launches the router with `--models-preset models.ini --models-max 1 --host 127.0.0.1`. Models are listed explicitly in the preset rather than discovered with `--models-dir`, because `models/` also contains non-GGUF files (`hf/`) and explicit paths make the setup reviewable. The router also lists models from the Hugging Face cache; `HF_HOME` points it at `models/hf/`, so nothing from a global cache appears.
 
-**Load time** is recorded as one number per model: the latency of the first request to an unloaded model, minus the latency of the same request once the model is warm.
+- **No automatic fitting.** By default llama.cpp adjusts unset options to keep 1 GiB free, moving layers to the CPU or shrinking the context. `fit = off` with every layer on the GPU makes a model that does not fit fail to load instead, so what the smoke test measures is what runs.
+- **Both models at 8k context.** The 9B versus 4B comparison then sends both the same prompts.
+- **Weights.** Qwen publishes no GGUF files for Qwen3.5. The weights are unsloth's Q4_K_M conversions, pinned to a commit and checked by SHA-256 in `scripts/download_models.py`.
+
+**Load time** is recorded as one number per model: the latency of the first request to an unloaded model, minus the latency of the same request once the model is warm. It depends on whether the file is still in the operating system's page cache: 2 to 5 seconds for the 9B between runs, and about 6.5 seconds when read from disk.
 
 **Known caveat.** A bug was reported in March 2026 where concurrent requests for different models could exceed `--models-max`. This proof of concept sends requests sequentially, and the evaluation runner never issues concurrent requests for different models.
 
@@ -283,14 +295,15 @@ The router is launched with `--models-preset models.ini --models-max 1 --host 12
 
 | Risk | Control |
 |---|---|
-| LLM server reachable from the LAN | `--host 127.0.0.1` |
+| LLM server reachable from the LAN | `--host 127.0.0.1`, fixed in `scripts/serve_models.sh` |
+| llama.cpp downloading a model | `LLAMA_ARG_OFFLINE=1`; models come only from `models.ini` and the project's `models/hf/` |
 | Web page reachable from the LAN | bound to `127.0.0.1` |
 | HF libraries phoning home | `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `HF_HUB_DISABLE_TELEMETRY=1` |
 | LangChain tracing to LangSmith | `LANGSMITH_TRACING=false`, `LANGCHAIN_TRACING_V2=false`; tracing goes to local Phoenix |
 | Remote code in the embedder (`trust_remote_code`) | code reviewed once, revision pinned |
 | A vector database service exposed on a port | none runs; Qdrant is embedded in the Python process |
 
-**Proof:** the final demo runs the full pipeline, from PDF import to verdict matrix to trace, with the laptop in airplane mode.
+**Proof:** the final demo runs the full pipeline, from PDF import to verdict matrix to trace, with the laptop in airplane mode. The model runtime is already shown to need no network: the smoke test passes inside a network namespace that has only a loopback interface (`unshare -rn`).
 
 ## 5. Evaluation
 
@@ -341,6 +354,8 @@ Decisions that are hard to reverse have their own records: [ADR 0001](adr/0001-h
 | No pause for user input | LangGraph `interrupt` with checkpointing | The human step moved to workbook confirmation; a missing fact is reported and the user asks again. |
 | llama.cpp `llama-server` | Ollama, vLLM | Ollama picks context and slots for you; this project needs exact control of memory. vLLM pre-allocates GPU memory and suits dedicated servers, not a shared laptop GPU. |
 | Router mode, `--models-max 1` | restart the server per model | On-demand loading and model switching without restarts; each instance is still its own process. |
+| `fit = off`, every layer on the GPU | llama.cpp's automatic fitting | Fitting keeps a 1 GiB margin by moving layers to the CPU, so a model that does not fit would run slowly instead of failing. |
+| unsloth GGUF conversions | bartowski, lmstudio-community | Qwen publishes no GGUF for Qwen3.5; unsloth's imatrix Q4_K_M is the most downloaded and covers both sizes. |
 | Qwen3.5-9B primary, 4B baseline | Qwen3.6 | Qwen3.6's smallest open models (27B dense, 35B-A3B MoE) need well over 8 GB. |
 | voyage-4-nano | bge-m3, Qwen3-Embedding | Open weights, multilingual, and a shared embedding space with hosted Voyage 4 models. |
 | Reranker on CPU | on GPU | Keeps the GPU for a single tenant at query time. |

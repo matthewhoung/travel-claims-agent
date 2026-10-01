@@ -1,0 +1,119 @@
+{
+  "started": "2026-10-01T15:32:59+08:00",
+  "llama_server": "version: 0.5.0-dev (build 11277, commit eae11d221)",
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "vram_total_mib": 8188,
+  "vram_method": "NVML memory used and free (as nvidia-smi reports them), sampled every 20 ms",
+  "requests": "streamed chat; temperature 0, seed 42, fixed output length, no prompt cache; free text, no JSON schema",
+  "min_headroom_mib": 300,
+  "started_with_no_model_loaded": true,
+  "models": [
+    {
+      "model": "qwen3.5-9b",
+      "args": [
+        "/home/hong/tools/llama.cpp/build/bin/llama-server",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "40837",
+        "--alias",
+        "qwen3.5-9b",
+        "--ctx-size",
+        "8192",
+        "--fit",
+        "off",
+        "--model",
+        "models/qwen3.5-9b/Qwen3.5-9B-Q4_K_M.gguf",
+        "--n-gpu-layers",
+        "all",
+        "--parallel",
+        "1"
+      ],
+      "ctx_size": 8192,
+      "load_time_s": 1.92,
+      "short_prompt": {
+        "prompt_tokens": 21,
+        "generated_tokens": 64,
+        "ttft_s": 0.172,
+        "prompt_tokens_per_s": 294.3,
+        "decode_tokens_per_s": 41.7
+      },
+      "full_context": {
+        "prompt_tokens": 7806,
+        "generated_tokens": 256,
+        "ttft_s": 4.496,
+        "prompt_tokens_per_s": 1739.9,
+        "decode_tokens_per_s": 39.6
+      },
+      "vram_idle_used_mib": 294,
+      "vram_peak_used_mib": 5690,
+      "headroom_mib": 2266,
+      "fits": true
+    },
+    {
+      "model": "qwen3.5-4b",
+      "args": [
+        "/home/hong/tools/llama.cpp/build/bin/llama-server",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "57653",
+        "--alias",
+        "qwen3.5-4b",
+        "--ctx-size",
+        "8192",
+        "--fit",
+        "off",
+        "--model",
+        "models/qwen3.5-4b/Qwen3.5-4B-Q4_K_M.gguf",
+        "--n-gpu-layers",
+        "all",
+        "--parallel",
+        "1"
+      ],
+      "ctx_size": 8192,
+      "load_time_s": 1.29,
+      "short_prompt": {
+        "prompt_tokens": 21,
+        "generated_tokens": 64,
+        "ttft_s": 0.12,
+        "prompt_tokens_per_s": 381.2,
+        "decode_tokens_per_s": 67.5
+      },
+      "full_context": {
+        "prompt_tokens": 7806,
+        "generated_tokens": 256,
+        "ttft_s": 3.118,
+        "prompt_tokens_per_s": 2512.1,
+        "decode_tokens_per_s": 61.2
+      },
+      "vram_idle_used_mib": 294,
+      "vram_peak_used_mib": 3406,
+      "headroom_mib": 4550,
+      "fits": true
+    }
+  ],
+  "switches": [
+    {
+      "from": "qwen3.5-9b",
+      "to": "qwen3.5-4b",
+      "most_models_resident": 1,
+      "resident_after": [
+        "qwen3.5-4b"
+      ],
+      "headroom_mib": 2340,
+      "passed": true
+    },
+    {
+      "from": "qwen3.5-4b",
+      "to": "qwen3.5-9b",
+      "most_models_resident": 1,
+      "resident_after": [
+        "qwen3.5-9b"
+      ],
+      "headroom_mib": 2282,
+      "passed": true
+    }
+  ],
+  "passed": true
+}
