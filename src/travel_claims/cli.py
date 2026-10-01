@@ -4,12 +4,21 @@ import argparse
 import re
 import sys
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 
-from travel_claims.app import CannotImport, import_product, list_policies, load_workbook
+from travel_claims.app import (
+    CannotImport,
+    CannotJudge,
+    import_product,
+    judge_scenario,
+    list_policies,
+    load_workbook,
+)
 from travel_claims.clause_store import ClauseStore
 from travel_claims.conditions import ClauseRef
-from travel_claims.local_models import LocalModels
+from travel_claims.judging import VerdictMatrix
+from travel_claims.local_models import ArrangedBy, Incident, LocalModels, Replacement
 from travel_claims.policies import Policy, Wording
 
 # The Clause store lives here unless --store says otherwise. Workbooks go to
@@ -57,6 +66,17 @@ def main(argv: Sequence[str] | None = None, models: LocalModels | None = None) -
     loading.add_argument("workbook", type=_file)
     loading.add_argument("--store", type=Path, default=_STORE, help="the Clause store")
 
+    judging = commands.add_parser(
+        "judge",
+        help="judge a Scenario against confirmed workbooks",
+        description="Judge a Scenario, described in free text, against each confirmed "
+        "workbook, and print the facts read from it and the Verdict matrix. Nothing is "
+        "judged while any workbook has a problem; the command then exits with status 1.",
+    )
+    judging.add_argument("--scenario", required=True, help="the Scenario, in free text")
+    judging.add_argument("workbooks", nargs="+", type=_file, metavar="workbook")
+    judging.add_argument("--store", type=Path, default=_STORE, help="the Clause store")
+
     args = parser.parse_args(argv)
     if args.command == "list-policies":
         for index, policy in enumerate(list_policies(args.document), start=1):
@@ -65,6 +85,10 @@ def main(argv: Sequence[str] | None = None, models: LocalModels | None = None) -
         if models is None:
             parser.error("import needs the local models, which are not connected yet")
         _import(args, models, parser)
+    elif args.command == "judge":
+        if models is None:
+            parser.error("judge needs the local models, which are not connected yet")
+        _judge(args, models)
     else:
         _load(args)
 
@@ -129,6 +153,92 @@ def _load(args: argparse.Namespace) -> None:
     )
     if table is None:
         sys.exit(1)
+
+
+def _judge(args: argparse.Namespace, models: LocalModels) -> None:
+    try:
+        matrix = judge_scenario(
+            args.scenario, args.workbooks, store=ClauseStore(args.store), models=models
+        )
+    except CannotJudge as refused:
+        print("Nothing judged: fix these problems first.")
+        for workbook, problems in refused.problems.items():
+            print(f"{workbook}: {_count(len(problems), 'problem')}")
+            for problem in problems:
+                print(problem)
+        sys.exit(1)
+    _print_matrix(matrix)
+
+
+def _print_matrix(matrix: VerdictMatrix) -> None:
+    facts = matrix.facts
+    print("Facts read from the Scenario:")
+    print(f"  Benefits: {', '.join(facts.benefits) or 'none stated'}")
+    for number, incident in enumerate(facts.incidents, start=1):
+        print(f"  Incident {number}: {_incident(incident)}")
+        for line in _incident_details(incident):
+            print(f"    {line}")
+    print(f"  Cause: {facts.cause or 'not stated'}")
+    period = (
+        f"{_time(facts.policy_period[0])} – {_time(facts.policy_period[1])}"
+        if facts.policy_period
+        else "not stated"
+    )
+    print(f"  Policy bought {_time(facts.purchased_at)}, policy period {period}")
+    print(f"  In force at purchase: {'; '.join(facts.in_force_at_purchase) or 'none stated'}")
+    if facts.earlier_claims is not None:
+        print(f"  Earlier claims in the policy period: {facts.earlier_claims}")
+    for cell in matrix.cells:
+        print()
+        print(f"{cell.product}, {cell.wording} wording: {cell.verdict}")
+        for outcome in cell.outcomes:
+            print(
+                f"  {outcome.condition}, incident {outcome.incident}: "
+                f"{outcome.verdict} ({outcome.clause})"
+            )
+            print(f"    {outcome.grounds}")
+
+
+def _incident(incident: Incident) -> str:
+    leg = f"{incident.leg} " if incident.leg else ""
+    transport = incident.transport or "transport not stated"
+    airport = f" from {incident.airport}" if incident.airport else ""
+    return f"{leg}{transport}{airport}"
+
+
+def _incident_details(incident: Incident) -> list[str]:
+    times = [f"scheduled departure {_time(incident.scheduled_departure)}"]
+    if incident.actual_departure is not None:
+        times.append(f"actual departure {_time(incident.actual_departure)}")
+    if incident.cancelled:
+        times.append("cancelled")
+    if incident.missed_connection:
+        times.append("connection missed")
+    if incident.stated_delay is not None:
+        hours = incident.stated_delay.total_seconds() / 3600
+        times.append(f"delay stated as {hours:g} hours")
+    return [", ".join(times), *(_replacement(r) for r in incident.replacements)]
+
+
+def _replacement(replacement: Replacement) -> str:
+    parts = [f"replacement departing {_time(replacement.departure)}"]
+    if replacement.arranged_by is ArrangedBy.INSURED:
+        arranged = "arranged by the insured"
+        if replacement.arranged_at is not None:
+            arranged += f" at {_time(replacement.arranged_at)}"
+        parts.append(arranged)
+    elif replacement.arranged_by is ArrangedBy.AIRLINE:
+        parts.append("arranged by the airline")
+    if replacement.destination:
+        home = {True: " (Taiwan)", False: " (not Taiwan)", None: ""}
+        parts.append(f"to {replacement.destination}{home[replacement.returns_to_taiwan]}")
+    if replacement.taken is not None:
+        parts.append("taken" if replacement.taken else "not taken")
+    return ", ".join(parts)
+
+
+def _time(moment: datetime | None) -> str:
+    return "not stated" if moment is None else moment.strftime("%Y-%m-%d %H:%M")
 
 
 def _file(text: str) -> Path:

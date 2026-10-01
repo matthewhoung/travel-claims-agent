@@ -23,22 +23,8 @@ from travel_claims.conditions import (
 from travel_claims.loading import ConditionTable
 from travel_claims.policies import Wording
 
-from hsiang_le_you import FIXTURE, import_draft
+from hsiang_le_you import FIXTURE, confirm, import_draft, review
 from scripted_models import ScriptedModels
-
-
-def review(workbook: Path, edits: dict[str, str | float | date | None]) -> None:
-    """Edit cells as the reviewer does in Excel, such as {"Conditions!H5": 6}."""
-    book = openpyxl.load_workbook(workbook)
-    for reference, value in edits.items():
-        sheet, cell = reference.split("!")
-        book[sheet][cell] = value
-    book.save(workbook)
-
-
-def confirm(workbook: Path, by: str = "王小明", on: date = date(2026, 10, 1)) -> None:
-    """Record who confirmed the workbook and when, above the Conditions table."""
-    review(workbook, {"Conditions!B1": by, "Conditions!B2": on})
 
 
 def test_a_draft_nobody_has_confirmed_lacks_the_confirmation_record(tmp_path: Path) -> None:

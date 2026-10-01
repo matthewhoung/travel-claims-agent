@@ -303,6 +303,32 @@ Conditions!B2: Confirmed on is missing
 32 fields extracted, 0 changed by the reviewer.
 ```
 
+### Judging a Scenario
+
+Describe a Scenario in free text and give the confirmed workbooks to judge it against, one cell of the Verdict matrix each:
+
+```bash
+uv run travel-claims judge --scenario "七月十四日晚上八點從成田返台的班機因颱風取消……" \
+  workbooks/享樂遊.new.xlsx
+```
+
+```
+Facts read from the Scenario:
+  Benefits: flight delay
+  Incident 1: return flight from 成田國際機場
+    scheduled departure 2026-07-14 20:00, cancelled
+    replacement departing 2026-07-15 14:00, arranged by the insured at 2026-07-15 09:00, to 桃園 (Taiwan), taken
+  Cause: 颱風
+  Policy bought 2026-07-01 12:00, policy period 2026-07-10 00:00 – 2026-07-14 23:59
+  In force at purchase: none stated
+
+享樂遊, new wording: paid
+  flight delay, incident 1: paid (第三十條)
+    a delay of 18 h 0 min: 4 full steps of 4 hours
+```
+
+Every workbook is validated as Load does first, and nothing is judged while any has a problem. Code measures the delay period from the stated times by the Wording version's rule and checks the threshold and the policy period; the local models judge the covered event, its requirements and each exclusion, one provision at a time. Flight delay is judged so far, paid or not paid; undetermined outcomes are still to come. Like `import`, `judge` needs the real local-model adapter.
+
 The remaining run commands will be documented here as the code lands.
 
 ## Roadmap

@@ -1,12 +1,21 @@
 """The command line: a thin shell over the application interface."""
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import openpyxl
 import pytest
 
 from travel_claims.cli import main
+from travel_claims.conditions import Benefit
+from travel_claims.local_models import (
+    ArrangedBy,
+    Incident,
+    Leg,
+    Replacement,
+    ScenarioFacts,
+    Settled,
+)
 
 import hsiang_le_you
 from scripted_models import ScriptedModels
@@ -130,3 +139,90 @@ def test_import_points_out_a_new_product_name_beside_those_already_stored(
         " another Wording version of a Product, give its name exactly.\n"
     ) in misspelt
     assert "new Product" not in same_product
+
+
+def test_judge_prints_the_facts_read_and_the_verdict_matrix(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+    hsiang_le_you.confirm(workbook)
+    taipei = timezone(timedelta(hours=8))
+    facts = ScenarioFacts(
+        benefits=(Benefit.FLIGHT_DELAY,),
+        incidents=(
+            Incident(
+                leg=Leg.RETURN,
+                airport="成田國際機場",
+                transport="flight",
+                scheduled_departure=datetime(2026, 7, 14, 20, 0, tzinfo=taipei),
+                cancelled=True,
+                replacements=(
+                    Replacement(
+                        departure=datetime(2026, 7, 15, 14, 0, tzinfo=taipei),
+                        arranged_by=ArrangedBy.INSURED,
+                        taken=True,
+                        arranged_at=datetime(2026, 7, 15, 9, 0, tzinfo=taipei),
+                        destination="桃園",
+                        returns_to_taiwan=True,
+                    ),
+                ),
+            ),
+        ),
+        cause="颱風",
+        purchased_at=datetime(2026, 7, 1, 12, 0, tzinfo=taipei),
+        policy_period=(
+            datetime(2026, 7, 10, 0, 0, tzinfo=taipei),
+            datetime(2026, 7, 14, 23, 59, tzinfo=taipei),
+        ),
+    )
+    models = ScriptedModels(
+        facts=facts,
+        judgements={
+            "第三十條": Settled(met=True),
+            "第四條 二": Settled(met=False),
+            "第三十一條 二": Settled(met=False),
+            "第三十一條 五": Settled(met=False),
+        },
+    )
+
+    main(
+        ["judge", "--scenario=回程班機因颱風取消。", str(workbook), f"--store={store.directory}"],
+        models=models,
+    )
+
+    assert models.scenarios == ["回程班機因颱風取消。"]
+    assert capsys.readouterr().out == (
+        "Facts read from the Scenario:\n"
+        "  Benefits: flight delay\n"
+        "  Incident 1: return flight from 成田國際機場\n"
+        "    scheduled departure 2026-07-14 20:00, cancelled\n"
+        "    replacement departing 2026-07-15 14:00, arranged by the insured"
+        " at 2026-07-15 09:00, to 桃園 (Taiwan), taken\n"
+        "  Cause: 颱風\n"
+        "  Policy bought 2026-07-01 12:00, policy period 2026-07-10 00:00 – 2026-07-14 23:59\n"
+        "  In force at purchase: none stated\n"
+        "\n"
+        "享樂遊, new wording: paid\n"
+        "  flight delay, incident 1: paid (第三十條)\n"
+        "    a delay of 18 h 0 min: 4 full steps of 4 hours\n"
+    )
+
+
+def test_judge_refuses_a_workbook_with_problems_and_lists_them(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+
+    with pytest.raises(SystemExit) as exit:
+        main(
+            ["judge", "--scenario=班機延誤五小時。", str(workbook), f"--store={store.directory}"],
+            models=ScriptedModels(),
+        )
+
+    assert exit.value.code == 1
+    assert capsys.readouterr().out == (
+        "Nothing judged: fix these problems first.\n"
+        f"{workbook}: 2 problems\n"
+        "Conditions!B1: Confirmed by is missing\n"
+        "Conditions!B2: Confirmed on is missing\n"
+    )

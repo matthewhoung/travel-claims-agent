@@ -1,12 +1,14 @@
 """The application interface. The command line and the web page are thin shells over it."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from os import PathLike
 from pathlib import Path
 
 from travel_claims.clause_store import ClauseStore
 from travel_claims.extraction import draft_table
-from travel_claims.loading import Loaded, load
+from travel_claims.judging import VerdictMatrix, judge
+from travel_claims.loading import ConditionTable, Loaded, Problem, load
 from travel_claims.local_models import LocalModels
 from travel_claims.pdf import read_pages
 from travel_claims.policies import Policy, Wording
@@ -16,6 +18,18 @@ from travel_claims.workbook import write_draft
 
 class CannotImport(Exception):
     """The document, the choice of policy or the workbook named does not allow an import."""
+
+
+class CannotJudge(Exception):
+    """A workbook given has problems, so no Verdict is given from it (ADR 0001)."""
+
+    def __init__(self, problems: dict[Path, tuple[Problem, ...]]) -> None:
+        self.problems = problems
+        count = sum(len(found) for found in problems.values())
+        super().__init__(
+            f"{count} problem{'' if count == 1 else 's'} in "
+            + ", ".join(str(path) for path in problems)
+        )
 
 
 @dataclass(frozen=True)
@@ -71,6 +85,31 @@ def load_workbook(workbook: str | PathLike[str], *, store: ClauseStore) -> Loade
     Clause references are checked against the Clauses stored at import.
     """
     return load(Path(workbook), store)
+
+
+def judge_scenario(
+    scenario: str,
+    workbooks: Sequence[str | PathLike[str]],
+    *,
+    store: ClauseStore,
+    models: LocalModels,
+) -> VerdictMatrix:
+    """Judge a Scenario, described in free text, against each confirmed workbook.
+
+    Every workbook is validated as Load does first; if any has a problem,
+    nothing is judged. Clause text comes from the Clause store.
+    """
+    tables: list[ConditionTable] = []
+    problems: dict[Path, tuple[Problem, ...]] = {}
+    for workbook in workbooks:
+        loaded = load(Path(workbook), store)
+        if loaded.table is None:
+            problems[Path(workbook)] = loaded.problems
+        else:
+            tables.append(loaded.table)
+    if problems:
+        raise CannotJudge(problems)
+    return judge(scenario, tables, store, models)
 
 
 def _choose(pages: list[str], number: int | None, page_range: tuple[int, int] | None) -> Policy:

@@ -16,8 +16,9 @@ class ScriptedModels:
     """Answers with what the test scripted, and records what it was asked.
 
     Extraction returns the Extraction scripted for a Clause number, and nothing
-    for any other Clause. Judgements are scripted by the provision's Clause
-    reference, as in 第三十一條 二. Indexing does nothing.
+    for any other Clause. Judgements are scripted by the provision's text, or
+    failing that by its Clause reference, as in 第三十一條 二, which also covers
+    a Condition's covered event and its requirements. Indexing does nothing.
     """
 
     def __init__(
@@ -33,6 +34,7 @@ class ScriptedModels:
         self._judgements = dict(judgements or {})
         self._related = tuple(related)
         self.extracted: list[ExtractionRequest] = []
+        self.scenarios: list[str] = []
         self.indexed: list[tuple[str, Wording, tuple[int, ...]]] = []
 
     def extract(self, request: ExtractionRequest) -> Extraction:
@@ -40,15 +42,18 @@ class ScriptedModels:
         return self._extractions.get(request.clause.number, Extraction())
 
     def extract_facts(self, scenario: str) -> ScenarioFacts:
+        self.scenarios.append(scenario)
         if self._facts is None:
             raise AssertionError("the test scripted no Scenario facts")
         return self._facts
 
     def judge(self, request: JudgementRequest) -> Judgement:
-        reference = str(request.provision.clause)
-        if reference not in self._judgements:
-            raise AssertionError(f"the test scripted no judgement for {reference}")
-        return self._judgements[reference]
+        provision = request.provision
+        reference = str(provision.clause)
+        for key in (provision.text, reference):
+            if key in self._judgements:
+                return self._judgements[key]
+        raise AssertionError(f"the test scripted no judgement for {reference}: {provision.text}")
 
     def index(self, product: str, wording: Wording, clauses: Sequence[Clause]) -> None:
         self.indexed.append((product, wording, tuple(clause.number for clause in clauses)))

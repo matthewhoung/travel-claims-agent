@@ -103,6 +103,9 @@ class Replacement:
     # For a replacement the insured arranged.
     arranged_at: datetime | None = None
     destination: str | None = None
+    # Whether it flies to Taiwan (the Republic of China): a self-arranged
+    # replacement home counts toward the delay period whenever it was arranged.
+    returns_to_taiwan: bool | None = None
 
 
 @dataclass(frozen=True)

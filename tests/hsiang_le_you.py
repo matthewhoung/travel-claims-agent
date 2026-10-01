@@ -6,7 +6,10 @@ extract the flight-delay Condition, two of its exclusions and one general
 exclusion.
 """
 
+from datetime import date
 from pathlib import Path
+
+import openpyxl
 
 from travel_claims.app import import_product
 from travel_claims.clause_store import ClauseStore
@@ -67,3 +70,17 @@ def import_draft(directory: Path, models: ScriptedModels | None = None) -> tuple
         models=models or ScriptedModels(extractions=EXTRACTIONS),
     )
     return workbook, store
+
+
+def review(workbook: Path, edits: dict[str, str | float | date | None]) -> None:
+    """Edit cells as the reviewer does in Excel, such as {"Conditions!H5": 6}."""
+    book = openpyxl.load_workbook(workbook)
+    for reference, value in edits.items():
+        sheet, cell = reference.split("!")
+        book[sheet][cell] = value
+    book.save(workbook)
+
+
+def confirm(workbook: Path, by: str = "王小明", on: date = date(2026, 10, 1)) -> None:
+    """Record who confirmed the workbook and when, above the Conditions table."""
+    review(workbook, {"Conditions!B1": by, "Conditions!B2": on})
