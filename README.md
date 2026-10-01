@@ -4,7 +4,7 @@ A local agent that turns travel-inconvenience insurance clauses (旅遊不便險
 
 It runs entirely on one laptop with an 8 GB GPU. No document, prompt, or trace leaves the machine.
 
-**Status:** the design is settled and the public corpus is collected. No application code is in the repository yet. The full specification is [issue #1](https://github.com/matthewhoung/travel-claims-agent/issues/1), and the [roadmap](#roadmap) shows what comes next.
+**Status:** the design is settled and the public corpus is collected. The first piece of code lists the policies in a clause PDF, by rules and with no model; nothing after that is built yet. The full specification is [issue #1](https://github.com/matthewhoung/travel-claims-agent/issues/1), and the [roadmap](#roadmap) shows what comes next.
 
 ---
 
@@ -144,7 +144,8 @@ Expected answers come mainly from third parties, not from the author.
 | Tracing | Arize Phoenix, self-hosted | `uv.lock` |
 | Review and export | Excel workbook (.xlsx) | |
 | Interface | Minimal web page bound to localhost | |
-| Python | 3.12, managed by uv | `.python-version`, `uv.lock` |
+| PDF text | pdfplumber, read in two-column order | `uv.lock` |
+| Python | 3.12 installed by asdf; packages managed by uv | `.tool-versions`, `.python-version`, `uv.lock` |
 
 **Hardware:** RTX 4060 Laptop GPU (8 GB, about 7.1 GB free with the Windows desktop running), 16 cores, WSL2 Ubuntu 24.04 with 15 GB RAM.
 
@@ -162,6 +163,9 @@ The corpus is public: 13 clause documents from 8 Taiwanese insurers, 6 ombudsman
 travel-claims-agent/
 ├── README.md
 ├── CONTEXT.md               # vocabulary: Clause, Condition, Alignment, Overlap, Verdict, ...
+├── src/travel_claims/       # the application: List policies so far
+├── tests/                   # fixtures/ holds page text captured from the clause PDFs
+├── scripts/                 # capture_fixture.py: page text of a PDF, for fixtures
 ├── docs/
 │   ├── ARCHITECTURE.md      # pipeline, table layout, GPU scheduling, decision log
 │   ├── DISCOVERY.md         # where the requirements came from
@@ -173,7 +177,7 @@ travel-claims-agent/
     └── cases/               # ombudsman decisions and industry Q&A, git-ignored
 ```
 
-Code, model presets and the evaluation runner arrive with the roadmap steps.
+Model presets and the evaluation runner arrive with the roadmap steps.
 
 ## Setup (WSL2)
 
@@ -199,7 +203,39 @@ cmake --build build --config Release -j 6
 ~/tools/llama.cpp/build/bin/llama-server --list-devices   # expect CUDA0: RTX 4060 Laptop GPU
 ```
 
-The Python environment, model download and run commands will be documented here as the code lands.
+### Python environment
+
+asdf installs the interpreter named in `.tool-versions`, and uv installs the packages pinned in `uv.lock`. uv is set to use that interpreter and never downloads its own.
+
+```bash
+asdf install                       # Python 3.12.12
+uv sync                            # .venv from uv.lock
+uv run pytest                      # needs no GPU and no network
+uv run mypy && uv run ruff check
+```
+
+Tests read page-text fixtures committed under `tests/fixtures/`. The tests against the full PDFs, including two-column reading order, run only when the PDFs are in `data/clauses/`, and are skipped otherwise.
+
+### Listing the policies in a clause document
+
+```bash
+uv run travel-claims list-policies data/clauses/cathay/travel-bundle.new-wording.pdf
+```
+
+```
+...
+6. 國泰產物享樂遊海外旅行綜合保險
+   pages 13–19, suggested wording: new
+   82 Clauses: 第一條–第八十二條
+7. 國泰產物享暢行海外旅行綜合保險
+   pages 20–26, suggested wording: new
+   83 Clauses: 第一條–第八十三條
+...
+```
+
+The document can also be page text already extracted from a PDF, with a form feed between pages, as `scripts/capture_fixture.py` or `pdftotext` writes it.
+
+Model download and the remaining run commands will be documented here as the code lands.
 
 ## Roadmap
 

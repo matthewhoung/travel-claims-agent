@@ -20,7 +20,7 @@ Wording is `new` when the flight-delay exclusions mention 海上颱風警報 and
 | `clauses/huanan/travel-comprehensive-general.old-wording.pdf` | 華南產物 South China | 華南產物旅行綜合保險 (一般用) | old | 18 | `724dc90c0757b390d6a4544cb96630d0fe0db0e24276a40e21d293fa0f8c354c` |
 | `clauses/hotai/world-travel-comprehensive.new-wording.pdf` | 和泰產物 Hotai | 和泰產物環遊世界旅行綜合保險 | new | 33 | `28806cf27414a385fb2f7ea9f456c88aba5f72cb3d7957e9496cf657562958b7` |
 | `clauses/tfmi/travel-comprehensive.new-wording.pdf` | 臺灣產物 Taiwan Fire & Marine | 臺灣產物旅遊綜合保險 (from page 3; pages 1–2 are a terrorism rider) | new | 13 | `589ca91d565bdf7ea38e04679d5498c389cb8ac89934826ca21a967023a73562` |
-| `clauses/chungkuo/overseas-inconvenience.old-wording.pdf` | 兆豐產物 Chung Kuo | 兆豐產物新個人海外旅行不便保險 (name as reported; not matched in the extracted text) | old | 8 | `c8821e8680e6ac637436262e1ee48a6b8ecfde0c9351b97ef8837fa624f3f8f0` |
+| `clauses/chungkuo/overseas-inconvenience.old-wording.pdf` | 兆豐產物 Chung Kuo | 兆豐產物新個人海外旅行不便保險 (the extracted text spells 不 as a CJK compatibility ideograph, so a plain search for the name misses it) | old | 8 | `c8821e8680e6ac637436262e1ee48a6b8ecfde0c9351b97ef8837fa624f3f8f0` |
 
 ### Source URLs
 

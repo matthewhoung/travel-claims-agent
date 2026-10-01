@@ -2,7 +2,7 @@
 
 This document explains how the system is put together and why. The [README](../README.md) covers what it is for, [DISCOVERY.md](DISCOVERY.md) covers where the requirements came from, and [CONTEXT.md](../CONTEXT.md) defines the terms used here (Clause, Condition, Alignment, Overlap, Verdict and others).
 
-Nothing described here is implemented yet. Figures marked as estimates will be replaced by measurements.
+Only splitting documents into Clauses (section 3.1) is implemented so far. Figures marked as estimates will be replaced by measurements.
 
 ## 1. Constraints
 
@@ -58,6 +58,14 @@ Four things seen in the collected documents shape it:
 - **A Product can be one chapter of a comprehensive travel policy.** Extraction covers the travel-inconvenience chapter and the general provisions (definitions, general exclusions, policy period). The other chapters are kept for retrieval only.
 - **Body text refers to other articles** using the same 「第 X 條」 pattern as headings. The splitter must tell a heading from a cross-reference.
 - **Extraction artefacts.** Some files are two-column, headings can break across lines, and spaces appear around full-width punctuation.
+
+How the splitter deals with them:
+
+- **Reading order.** The PDF reader looks for a vertical gutter in each page's word positions. A two-column page is read left column, then right column; a line that crosses the gutter splits the page into bands read in turn. Page numbers and running footers stay at the page edges, where the splitter removes them.
+- **Characters.** Characters drawn twice at the same place (a way of faking bold) are dropped. Several PDFs encode common characters as CJK compatibility ideographs, such as 不 as U+F967, which look the same but do not match ordinary text; NFC normalisation turns them into ordinary characters and leaves full-width punctuation alone.
+- **Heading or reference.** A heading sets its title off with a space or colon, and a reference that opens a line continues as a sentence (「第七十八條之急難事故時，…」). A line whose form leaves this open counts as a heading only if its number follows the previous heading's.
+- **Policy boundaries and names.** A policy starts where Clause or chapter numbering restarts. Its name is the nearest title above: a line ending in 保險, 附加條款 or 附約, possibly with a plan type such as (甲型), possibly wrapped over up to three lines. A filing-number notice printed above the title at the top of a page belongs to the new policy, not to the previous policy's last Clause.
+- **Wording version.** Suggested from the flight-delay exclusions: new when they mention a sea typhoon warning (海上颱風警報) and a right to strike already obtained (已取得罷工權), old otherwise. A policy with no flight-delay exclusions, such as a travel-accident policy in the same bundle, gets no suggestion.
 
 ### 3.2 The workbook
 
@@ -325,6 +333,7 @@ Decisions that are hard to reverse have their own records: [ADR 0001](adr/0001-h
 | Decision | Alternatives | Why |
 |---|---|---|
 | Split clauses with rules | let the LLM segment the document | Heading patterns are regular; rules are exact and free. |
+| pdfplumber to read PDFs | PyMuPDF, pypdf | Gives the character positions that two-column reading needs, under the MIT licence; PyMuPDF is AGPL. |
 | Exclusions as separate rows | a text cell on each Condition | Each exclusion is judged and cited on its own; old and new wording differ mostly here. |
 | Amounts entered by hand | parse plan tables | Layouts differ at every insurer and some publish none. |
 | Retrieval within one Product | global top-k across insurers | A verdict is about one Product; global search lets long documents crowd out short ones. |
