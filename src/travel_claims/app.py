@@ -12,6 +12,7 @@ from travel_claims.loading import ConditionTable, Loaded, Problem, load
 from travel_claims.local_models import LocalModels
 from travel_claims.pdf import read_pages
 from travel_claims.policies import Policy, Wording
+from travel_claims.report import write_matrix
 from travel_claims.splitter import split_policies
 from travel_claims.workbook import write_draft
 
@@ -110,6 +111,14 @@ def judge_scenario(
     if problems:
         raise CannotJudge(problems)
     return judge(scenario, tables, store, models)
+
+
+def export_verdict_matrix(matrix: VerdictMatrix, path: str | PathLike[str]) -> None:
+    """Export a Verdict matrix to Excel, with the facts read and the per-Condition breakdown.
+
+    An existing file is never overwritten.
+    """
+    write_matrix(Path(path), matrix)
 
 
 def _choose(pages: list[str], number: int | None, page_range: tuple[int, int] | None) -> Policy:

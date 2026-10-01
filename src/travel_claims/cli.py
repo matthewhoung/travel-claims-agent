@@ -4,12 +4,12 @@ import argparse
 import re
 import sys
 from collections.abc import Sequence
-from datetime import datetime
 from pathlib import Path
 
 from travel_claims.app import (
     CannotImport,
     CannotJudge,
+    export_verdict_matrix,
     import_product,
     judge_scenario,
     list_policies,
@@ -17,9 +17,10 @@ from travel_claims.app import (
 )
 from travel_claims.clause_store import ClauseStore
 from travel_claims.conditions import ClauseRef
-from travel_claims.judging import VerdictMatrix
-from travel_claims.local_models import ArrangedBy, Incident, LocalModels, Replacement
+from travel_claims.judging import OutOfContract, Reason, Verdict, VerdictMatrix
+from travel_claims.local_models import LocalModels
 from travel_claims.policies import Policy, Wording
+from travel_claims.report import describe_facts
 
 # The Clause store lives here unless --store says otherwise. Workbooks go to
 # _WORKBOOKS. Both are git-ignored: they hold the customer's text.
@@ -76,6 +77,9 @@ def main(argv: Sequence[str] | None = None, models: LocalModels | None = None) -
     judging.add_argument("--scenario", required=True, help="the Scenario, in free text")
     judging.add_argument("workbooks", nargs="+", type=_file, metavar="workbook")
     judging.add_argument("--store", type=Path, default=_STORE, help="the Clause store")
+    judging.add_argument(
+        "--export", type=Path, help="also write the Verdict matrix to this new Excel file"
+    )
 
     args = parser.parse_args(argv)
     if args.command == "list-policies":
@@ -88,6 +92,8 @@ def main(argv: Sequence[str] | None = None, models: LocalModels | None = None) -
     elif args.command == "judge":
         if models is None:
             parser.error("judge needs the local models, which are not connected yet")
+        if args.export is not None and args.export.exists():
+            parser.error(f"{args.export} already exists; name a new file for the export")
         _judge(args, models)
     else:
         _load(args)
@@ -167,78 +173,41 @@ def _judge(args: argparse.Namespace, models: LocalModels) -> None:
             for problem in problems:
                 print(problem)
         sys.exit(1)
+    except OutOfContract as error:
+        print(f"Nothing judged: {error}")
+        sys.exit(1)
     _print_matrix(matrix)
+    if args.export is not None:
+        export_verdict_matrix(matrix, args.export)
+        print()
+        print(f"Exported the Verdict matrix to {args.export}")
 
 
 def _print_matrix(matrix: VerdictMatrix) -> None:
-    facts = matrix.facts
     print("Facts read from the Scenario:")
-    print(f"  Benefits: {', '.join(facts.benefits) or 'none stated'}")
-    for number, incident in enumerate(facts.incidents, start=1):
-        print(f"  Incident {number}: {_incident(incident)}")
-        for line in _incident_details(incident):
-            print(f"    {line}")
-    print(f"  Cause: {facts.cause or 'not stated'}")
-    period = (
-        f"{_time(facts.policy_period[0])} – {_time(facts.policy_period[1])}"
-        if facts.policy_period
-        else "not stated"
-    )
-    print(f"  Policy bought {_time(facts.purchased_at)}, policy period {period}")
-    print(f"  In force at purchase: {'; '.join(facts.in_force_at_purchase) or 'none stated'}")
-    if facts.earlier_claims is not None:
-        print(f"  Earlier claims in the policy period: {facts.earlier_claims}")
+    for label, text in describe_facts(matrix.facts):
+        print(f"  {label}: {text}" if label else f"    {text}")
     for cell in matrix.cells:
         print()
-        print(f"{cell.product}, {cell.wording} wording: {cell.verdict}")
+        print(f"{cell.product}, {cell.wording} wording: {_verdict(cell.verdict, cell.reason)}")
         for outcome in cell.outcomes:
             print(
                 f"  {outcome.condition}, incident {outcome.incident}: "
-                f"{outcome.verdict} ({outcome.clause})"
+                f"{_verdict(outcome.verdict, outcome.reason)} ({outcome.clause})"
             )
             print(f"    {outcome.grounds}")
+            for provision in outcome.turns_on:
+                for reading in provision.readings:
+                    print(
+                        f"    if the {provision.kind} of {provision.clause} is read as "
+                        f"{reading.cause}: {_verdict(reading.verdict, reading.reason)} "
+                        f"({reading.clause})"
+                    )
+                    print(f"      {reading.grounds}")
 
 
-def _incident(incident: Incident) -> str:
-    leg = f"{incident.leg} " if incident.leg else ""
-    transport = incident.transport or "transport not stated"
-    airport = f" from {incident.airport}" if incident.airport else ""
-    return f"{leg}{transport}{airport}"
-
-
-def _incident_details(incident: Incident) -> list[str]:
-    times = [f"scheduled departure {_time(incident.scheduled_departure)}"]
-    if incident.actual_departure is not None:
-        times.append(f"actual departure {_time(incident.actual_departure)}")
-    if incident.cancelled:
-        times.append("cancelled")
-    if incident.missed_connection:
-        times.append("connection missed")
-    if incident.stated_delay is not None:
-        hours = incident.stated_delay.total_seconds() / 3600
-        times.append(f"delay stated as {hours:g} hours")
-    return [", ".join(times), *(_replacement(r) for r in incident.replacements)]
-
-
-def _replacement(replacement: Replacement) -> str:
-    parts = [f"replacement departing {_time(replacement.departure)}"]
-    if replacement.arranged_by is ArrangedBy.INSURED:
-        arranged = "arranged by the insured"
-        if replacement.arranged_at is not None:
-            arranged += f" at {_time(replacement.arranged_at)}"
-        parts.append(arranged)
-    elif replacement.arranged_by is ArrangedBy.AIRLINE:
-        parts.append("arranged by the airline")
-    if replacement.destination:
-        home = {True: " (Taiwan)", False: " (not Taiwan)", None: ""}
-        parts.append(f"to {replacement.destination}{home[replacement.returns_to_taiwan]}")
-    if replacement.taken is not None:
-        parts.append("taken" if replacement.taken else "not taken")
-    return ", ".join(parts)
-
-
-def _time(moment: datetime | None) -> str:
-    return "not stated" if moment is None else moment.strftime("%Y-%m-%d %H:%M")
+def _verdict(verdict: Verdict, reason: Reason | None) -> str:
+    return f"{verdict}, {reason}" if reason is not None else str(verdict)
 
 
 def _file(text: str) -> Path:

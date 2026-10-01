@@ -6,15 +6,28 @@ extract the flight-delay Condition, two of its exclusions and one general
 exclusion.
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import openpyxl
 
 from travel_claims.app import import_product
 from travel_claims.clause_store import ClauseStore
-from travel_claims.conditions import BenefitType, ExclusionType
-from travel_claims.local_models import ExtractedCondition, ExtractedExclusion, Extraction
+from travel_claims.conditions import Benefit, BenefitType, ExclusionType
+from travel_claims.local_models import (
+    ArrangedBy,
+    ExtractedCondition,
+    ExtractedExclusion,
+    Extraction,
+    Incident,
+    Judgement,
+    Leg,
+    Reading,
+    Replacement,
+    ScenarioFacts,
+    Settled,
+    TurnsOnCause,
+)
 from travel_claims.policies import Wording
 
 from scripted_models import ScriptedModels
@@ -35,11 +48,13 @@ TYPHOON = ExtractedExclusion(
     concerns_cause=False,
     item="二",
 )
+# The force-majeure proviso of 第三十一條 五.
+PROVISO = "但被保險人因不可抗力因素致無法搭乘航空業者所提供之第一班替代交通工具者，不在此限。"
 FIRST_REPLACEMENT = ExtractedExclusion(
     type=ExclusionType.FIRST_REPLACEMENT_NOT_TAKEN,
     text="被保險人未搭乘航空業者所提供之第一班替代交通工具。",
     concerns_cause=True,
-    proviso="但被保險人因不可抗力因素致無法搭乘航空業者所提供之第一班替代交通工具者，不在此限。",
+    proviso=PROVISO,
     item="五",
 )
 WILFUL_ACT = ExtractedExclusion(
@@ -84,3 +99,64 @@ def review(workbook: Path, edits: dict[str, str | float | date | None]) -> None:
 def confirm(workbook: Path, by: str = "王小明", on: date = date(2026, 10, 1)) -> None:
     """Record who confirmed the workbook and when, above the Conditions table."""
     review(workbook, {"Conditions!B1": by, "Conditions!B2": on})
+
+
+# Scenarios ------------------------------------------------------------------------
+
+# Times in the policy are Taiwan time (中原標準時間).
+TAIPEI = timezone(timedelta(hours=8))
+POLICY_PERIOD = (
+    datetime(2026, 7, 10, 0, 0, tzinfo=TAIPEI),
+    datetime(2026, 7, 14, 23, 59, tzinfo=TAIPEI),
+)
+
+# The covered event and its requirements are met, and no exclusion applies.
+NOTHING_APPLIES: dict[str, Judgement] = {
+    "第三十條": Settled(met=True),
+    "第四條 二": Settled(met=False),
+    "第三十一條 二": Settled(met=False),
+    "第三十一條 五": Settled(met=False),
+}
+
+ROAD_CLOSURE = (
+    "保險期間內，去程班機原定 10:00 起飛，延誤後航空公司安排了 15:00 出發的第一班替代班機。"
+    "機場聯外道路封閉，我沒趕上，改搭 20:00 的下一班。"
+)
+
+
+def road_closure() -> ScenarioFacts:
+    """The README's Scenario: the first replacement flight missed because a road was closed.
+
+    It gives times but no dates, and says the trip is within the policy period.
+    """
+    scheduled = datetime(2026, 7, 10, 10, 0, tzinfo=TAIPEI)
+    return ScenarioFacts(
+        benefits=(Benefit.FLIGHT_DELAY,),
+        incidents=(
+            Incident(
+                leg=Leg.OUTBOUND,
+                airport=None,
+                transport="flight",
+                scheduled_departure=scheduled,
+                replacements=(
+                    Replacement(
+                        departure=scheduled + timedelta(hours=5),
+                        arranged_by=ArrangedBy.AIRLINE,
+                        taken=False,
+                    ),
+                    Replacement(
+                        departure=scheduled + timedelta(hours=10),
+                        arranged_by=ArrangedBy.AIRLINE,
+                        taken=True,
+                    ),
+                ),
+            ),
+        ),
+        cause="機場聯外道路封閉",
+        within_policy_period=True,
+    )
+
+
+FORCE_MAJEURE = TurnsOnCause(
+    (Reading(cause="不可抗力", met=True), Reading(cause="非不可抗力", met=False))
+)

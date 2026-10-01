@@ -133,6 +133,9 @@ class ScenarioFacts:
     cause: str | None = None
     purchased_at: datetime | None = None
     policy_period: tuple[datetime, datetime] | None = None
+    # Whether the trip is within the policy period, when the Scenario says so
+    # without giving the period's dates (保險期間內).
+    within_policy_period: bool | None = None
     # Warnings or strikes in force when the policy was bought.
     in_force_at_purchase: tuple[str, ...] = ()
     earlier_claims: int | None = None
@@ -153,6 +156,8 @@ class Provision:
     kind: ProvisionKind
     text: str
     clause: ClauseRef
+    # Whether the judgement may turn on the Cause: an exclusion the workbook
+    # marks so, its proviso, or a covered-cause requirement.
     concerns_cause: bool
 
 
@@ -216,7 +221,10 @@ class LocalModels(Protocol):
         ...
 
     def judge(self, request: JudgementRequest) -> Judgement:
-        """Judge one provision against the facts of a Scenario."""
+        """Judge one provision against the facts of a Scenario.
+
+        A provision that does not concern the Cause is never answered TurnsOnCause.
+        """
         ...
 
     def index(self, product: str, wording: Wording, clauses: Sequence[Clause]) -> None:

@@ -78,6 +78,13 @@ COVERAGE_REQUIREMENTS: dict[Benefit, tuple[str, ...]] = {
     Benefit.FLIGHT_DELAY: ("scheduled flight", "as a passenger"),
 }
 
+# The coverage requirements of each Benefit that are covered causes: a provision
+# that concerns the Cause, so its judgement may turn on how the Cause is
+# classified. Flight delay lists no covered causes.
+COVERED_CAUSES: dict[Benefit, tuple[str, ...]] = {
+    Benefit.FLIGHT_DELAY: (),
+}
+
 # "Applies to" names Condition keys, Benefits, or this, for every Condition.
 ALL = "all"
 

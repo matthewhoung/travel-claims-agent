@@ -319,7 +319,8 @@ Facts read from the Scenario:
     scheduled departure 2026-07-14 20:00, cancelled
     replacement departing 2026-07-15 14:00, arranged by the insured at 2026-07-15 09:00, to 桃園 (Taiwan), taken
   Cause: 颱風
-  Policy bought 2026-07-01 12:00, policy period 2026-07-10 00:00 – 2026-07-14 23:59
+  Policy bought: 2026-07-01 12:00
+  Policy period: 2026-07-10 00:00 – 2026-07-14 23:59
   In force at purchase: none stated
 
 享樂遊, new wording: paid
@@ -327,7 +328,21 @@ Facts read from the Scenario:
     a delay of 18 h 0 min: 4 full steps of 4 hours
 ```
 
-Every workbook is validated as Load does first, and nothing is judged while any has a problem. Code measures the delay period from the stated times by the Wording version's rule and checks the threshold and the policy period; the local models judge the covered event, its requirements and each exclusion, one provision at a time. Flight delay is judged so far, paid or not paid; undetermined outcomes are still to come. Like `import`, `judge` needs the real local-model adapter.
+Every workbook is validated as Load does first, and nothing is judged while any has a problem. Code measures the delay period from the stated times by the Wording version's rule and checks the threshold and the policy period; the local models judge the covered event, its requirements, each exclusion and its proviso, one provision at a time. Code derives every outcome from those judgements.
+
+When the outcome cannot be decided, the cell says why: the Scenario lacks a fact (named), the outcome turns on how the Cause is classified, or the Clauses do not settle the situation. For the road-closure Scenario above, each reading is listed:
+
+```
+享樂遊, new wording: undetermined, Cause ambiguous
+  flight delay, incident 1: undetermined, Cause ambiguous (第三十一條 五)
+    turns on how the Cause is classified, under the proviso: 但被保險人因不可抗力因素致無法搭乘航空業者所提供之第一班替代交通工具者，不在此限。
+    if the proviso of 第三十一條 五 is read as 不可抗力: paid (第三十條)
+      a delay of 5 h 0 min: 1 full step of 4 hours
+    if the proviso of 第三十一條 五 is read as 非不可抗力: not paid (第三十一條 五)
+      the exclusion applies: 被保險人未搭乘航空業者所提供之第一班替代交通工具。
+```
+
+`--export verdicts.xlsx` also writes the Verdict matrix, the facts read and the per-Condition breakdown, with a row per reading, to a new Excel file. Flight delay in the new wording is judged so far. Like `import`, `judge` needs the real local-model adapter.
 
 The remaining run commands will be documented here as the code lands.
 

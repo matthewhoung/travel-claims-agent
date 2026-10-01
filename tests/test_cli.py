@@ -12,9 +12,11 @@ from travel_claims.local_models import (
     ArrangedBy,
     Incident,
     Leg,
+    Reading,
     Replacement,
     ScenarioFacts,
     Settled,
+    TurnsOnCause,
 )
 
 import hsiang_le_you
@@ -199,12 +201,109 @@ def test_judge_prints_the_facts_read_and_the_verdict_matrix(
         "    replacement departing 2026-07-15 14:00, arranged by the insured"
         " at 2026-07-15 09:00, to 桃園 (Taiwan), taken\n"
         "  Cause: 颱風\n"
-        "  Policy bought 2026-07-01 12:00, policy period 2026-07-10 00:00 – 2026-07-14 23:59\n"
+        "  Policy bought: 2026-07-01 12:00\n"
+        "  Policy period: 2026-07-10 00:00 – 2026-07-14 23:59\n"
         "  In force at purchase: none stated\n"
         "\n"
         "享樂遊, new wording: paid\n"
         "  flight delay, incident 1: paid (第三十條)\n"
         "    a delay of 18 h 0 min: 4 full steps of 4 hours\n"
+    )
+
+
+def test_judge_prints_each_reading_of_a_cause_ambiguous_outcome_and_exports_the_matrix(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+    hsiang_le_you.confirm(workbook)
+    models = ScriptedModels(
+        facts=hsiang_le_you.road_closure(),
+        judgements=hsiang_le_you.NOTHING_APPLIES
+        | {
+            "第三十一條 五": Settled(met=True),
+            hsiang_le_you.PROVISO: hsiang_le_you.FORCE_MAJEURE,
+        },
+    )
+    exported = tmp_path / "verdicts.xlsx"
+
+    main(
+        [
+            "judge",
+            f"--scenario={hsiang_le_you.ROAD_CLOSURE}",
+            str(workbook),
+            f"--store={store.directory}",
+            f"--export={exported}",
+        ],
+        models=models,
+    )
+
+    out = capsys.readouterr().out
+    assert out.endswith(
+        "享樂遊, new wording: undetermined, Cause ambiguous\n"
+        "  flight delay, incident 1: undetermined, Cause ambiguous (第三十一條 五)\n"
+        f"    turns on how the Cause is classified, under the proviso: {hsiang_le_you.PROVISO}\n"
+        "    if the proviso of 第三十一條 五 is read as 不可抗力: paid (第三十條)\n"
+        "      a delay of 5 h 0 min: 1 full step of 4 hours\n"
+        "    if the proviso of 第三十一條 五 is read as 非不可抗力: not paid (第三十一條 五)\n"
+        "      the exclusion applies: 被保險人未搭乘航空業者所提供之第一班替代交通工具。\n"
+        "\n"
+        f"Exported the Verdict matrix to {exported}\n"
+    )
+    assert openpyxl.load_workbook(exported).sheetnames == ["Verdict matrix", "Facts", "Breakdown"]
+
+
+def test_judge_refuses_to_export_over_an_existing_file_before_judging(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+    hsiang_le_you.confirm(workbook)
+    models = ScriptedModels(facts=hsiang_le_you.road_closure())
+
+    with pytest.raises(SystemExit) as exit:
+        main(
+            [
+                "judge",
+                "--scenario=班機延誤五小時。",
+                str(workbook),
+                f"--store={store.directory}",
+                f"--export={workbook}",
+            ],
+            models=models,
+        )
+
+    assert exit.value.code == 2
+    assert f"{workbook} already exists" in capsys.readouterr().err
+    assert models.scenarios == []
+
+
+def test_judge_reports_an_answer_the_local_models_may_not_give(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+    hsiang_le_you.confirm(workbook)
+    # The typhoon-warning exclusion does not concern the Cause.
+    models = ScriptedModels(
+        facts=hsiang_le_you.road_closure(),
+        judgements=hsiang_le_you.NOTHING_APPLIES
+        | {"第三十一條 二": TurnsOnCause((Reading("颱風", met=True), Reading("其他", met=False)))},
+    )
+
+    with pytest.raises(SystemExit) as exit:
+        main(
+            [
+                "judge",
+                f"--scenario={hsiang_le_you.ROAD_CLOSURE}",
+                str(workbook),
+                f"--store={store.directory}",
+            ],
+            models=models,
+        )
+
+    assert exit.value.code == 1
+    assert capsys.readouterr().out == (
+        "Nothing judged: the local models answered that the exclusion of 第三十一條 二 turns on "
+        "the Cause, which only a provision that concerns the Cause may: "
+        "要保人向本公司申請訂立保險契約時，中華民國政府氣象機構已發布海上颱風警報。\n"
     )
 
 

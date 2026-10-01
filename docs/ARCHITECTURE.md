@@ -2,7 +2,7 @@
 
 This document explains how the system is put together and why. The [README](../README.md) covers what it is for, [DISCOVERY.md](DISCOVERY.md) covers where the requirements came from, and [CONTEXT.md](../CONTEXT.md) defines the terms used here (Clause, Condition, Alignment, Overlap, Verdict and others).
 
-Implemented so far: splitting documents into Clauses (section 3.1), importing a Product into a draft workbook and loading the reviewed workbook (section 3.2), and the local model runtime (section 4). Import extracts through the local-models port, which only the tests' scripted stand-in implements until the real adapter is built.
+Implemented so far: splitting documents into Clauses (section 3.1), importing a Product into a draft workbook and loading the reviewed workbook (section 3.2), judging a flight delay in the new wording, with undetermined outcomes and export to Excel (section 3.4, without retrieval), and the local model runtime (section 4). Import and judging go through the local-models port, which only the tests' scripted stand-in implements until the real adapter is built.
 
 ## 1. Constraints
 
@@ -168,6 +168,8 @@ Who decides what:
 | Find relevant general Clauses and definitions | embedder and reranker | some cases turn on a Clause outside the benefit's own article, such as the policy period |
 | Do the facts fall within the covered event, and does each exclusion or proviso apply? | LLM, one provision at a time, with the Clause text | needs language understanding; the answer can also be that it turns on the Cause, needs a fact, or is not settled by the Clauses |
 | Overlap | code | two or more Conditions paid for the same event in one Product; marked as resolved when they share an Aggregate limit |
+
+Only a provision the workbook marks as concerning the Cause (an exclusion, and with it its proviso), or a covered-cause requirement, may be judged as turning on the Cause. The confirmed workbook, not the model, says which provisions those are, so the request tells the adapter and it constrains its output schema to match. An answer that breaks this anyway is refused as out of contract: judging stops with an error naming the provision, rather than reporting a reason the workbook does not support. A proviso is judged only when its exclusion may apply, and when it applies it lifts the exclusion.
 
 In the old wording, the rule for measuring a flight delay has a force-majeure proviso: the delay runs to the next replacement flight if force majeure prevented taking the first. Code measures the delay under both readings, so the hours themselves can make an outcome Cause ambiguous.
 
