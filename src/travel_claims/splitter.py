@@ -36,7 +36,10 @@ _NUMERAL = r"[一二三四五六七八九十百零〇]+|\d+"
 _HEADING = re.compile(rf"^第\s*({_NUMERAL})\s*([章節條])(.*)$")
 # Body text refers to other Clauses with the same 「第 X 條」 pattern. When such a
 # reference opens a line, what follows it reads as a sentence, not a title.
-_REFERENCE_CONTINUATIONS = ("之", "及", "或", "至", "與", "有關", "另", "所", "規定", "約定", "第")
+_REFERENCE_CONTINUATIONS = ("之", "及", "或", "至", "與", "有關", "另", "所", "規定", "約定")
+# A reference may go on to a part of the Clause, as in 「第三十條第一項」. A
+# title may also open with 第, as in 「第二章 第三人責任保險」.
+_REFERENCE_TO_PART = re.compile(rf"^第\s*(?:{_NUMERAL})\s*[章節條項款目]")
 _SENTENCE_PUNCTUATION = re.compile(r"[，。；]")
 # A heading with no separator before its title, or with no title, must follow
 # the previous heading's number by at most this much.
@@ -267,7 +270,11 @@ def _heading(text: str) -> _Heading | None:
         return None
     rest = match.group(3)
     title = rest.lstrip(" \t\u3000：:").strip()
-    if title.startswith(_REFERENCE_CONTINUATIONS) or _SENTENCE_PUNCTUATION.search(title):
+    if (
+        title.startswith(_REFERENCE_CONTINUATIONS)
+        or _REFERENCE_TO_PART.match(title)
+        or _SENTENCE_PUNCTUATION.search(title)
+    ):
         return None
     separated = bool(title) and title != rest
     kind = cast(_Kind, match.group(2))  # _HEADING matches only 章, 節 and 條

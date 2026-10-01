@@ -65,6 +65,14 @@ def test_references_to_other_clauses_in_body_text_are_not_headings() -> None:
     ]
 
 
+def test_a_chapter_title_that_opens_with_an_ordinal_is_a_heading() -> None:
+    # 「第二章 第三人責任保險」 reads like a reference to 「第三…」 but is a chapter.
+    [cathay] = list_policies(FIXTURES / "cathay-new-general-provisions.txt")
+
+    assert clause(cathay, 18).chapter == "第二章 第三人責任保險"
+    assert clause(cathay, 6).text.endswith("保險人完全脫離被劫持的狀況。")
+
+
 def test_running_footers_and_page_numbers_are_removed_from_clause_text() -> None:
     [shinkong] = list_policies(FIXTURES / "shinkong-old-flight-delay.txt")
     exclusions = clause(shinkong, 23)
