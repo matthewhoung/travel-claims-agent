@@ -44,8 +44,8 @@ Benefit amounts are not in the clauses. They come from each insurer's plan table
 
 A scenario is judged against every product and wording version. Each cell is a verdict (paid, not paid, or undetermined with a reason) plus the clause it rests on.
 
-> 「投保時海上颱風警報已發布，之後去程班機因颱風延誤 6 小時。」
-> *A sea typhoon warning was already in effect when the policy was bought. The outbound flight was later delayed 6 hours by the typhoon.*
+> 「投保時海上颱風警報已發布。保險期間內，去程班機因颱風延誤 6 小時。」
+> *A sea typhoon warning was already in effect when the policy was bought. Within the policy period, the outbound flight was delayed 6 hours by the typhoon.*
 
 | | Old wording | New wording |
 |---|---|---|
@@ -53,12 +53,12 @@ A scenario is judged against every product and wording version. Each cell is a v
 
 When the cause is unclear, the system does not pick one:
 
-> 「班機延誤後，航空公司安排了第一班替代班機，但機場聯外道路封閉，我沒趕上，改搭下一班。」
-> *After the delay the airline offered a first replacement flight. The road to the airport was closed, I missed it, and took the next one.*
+> 「保險期間內，去程班機原定 10:00 起飛，延誤後航空公司安排了 15:00 出發的第一班替代班機。機場聯外道路封閉，我沒趕上，改搭 20:00 的下一班。」
+> *Within the policy period, the outbound flight was due at 10:00. After the delay the airline offered a first replacement flight leaving at 15:00. The road to the airport was closed, I missed it, and took the next one at 20:00.*
 
 | | New wording |
 |---|---|
-| Cathay Century 享樂遊 | **Undetermined: the cause is ambiguous.** Not taking the first replacement flight is excluded, unless force majeure (不可抗力) prevented it, and the clauses do not define that term (第三十一條 五). If the road closure counts as force majeure: paid. If not: not paid. |
+| Cathay Century 享樂遊 | **Undetermined: the cause is ambiguous.** The delay to the first replacement flight is 5 hours, so the threshold is met (第三十條). But not taking the first replacement flight is excluded, unless force majeure (不可抗力) prevented it, and the clauses do not define that term (第三十一條 五). If the road closure counts as force majeure: paid. If not: not paid. |
 
 If one incident triggers more than one condition in the same product, the matrix marks the overlap and says whether an aggregate limit in the clauses already resolves it.
 
