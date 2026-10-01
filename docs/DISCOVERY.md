@@ -44,7 +44,7 @@ Because the real drafts cannot be used, the project works on public clause docum
 1. **Insurers share one template.** The regulator publishes reference clauses for overseas travel-inconvenience insurance, and the industry association's Q&A states that each insurer's cover and clause text must match them. Products differ much less in wording than expected.
 2. **The wording changed in 2026.** An old version took effect on 2022-09-01 and a new one on 2026-04-01. The new flight-delay exclusions add, for example, a sea typhoon warning already issued when the policy was bought. Old and new differ more than insurers do.
 3. **Amounts are not in the clauses.** Clauses say only that the insurer pays "the amount stated in the policy". Amounts are published per plan on insurers' websites, in a different layout at each insurer, and only four of the eight insurers surveyed publish them at all.
-4. **Flight delay does not list covered causes.** A delay of four hours or more is paid whatever the reason. Cause appears only in the exclusions, and the term 不可抗力 is used without being defined. That is where the subjectivity lives.
+4. **Flight delay does not list covered causes.** A delay of four hours or more is paid whatever the reason, and the term 不可抗力 is used without being defined. Cause appears in the exclusions, and in the old wording also in the rule for measuring the delay: if force majeure prevented the traveller from taking the first replacement flight, the delay runs to the next one. That is where the subjectivity lives.
 
 The project therefore compares along two axes: old versus new wording, and benefit amounts across insurers.
 

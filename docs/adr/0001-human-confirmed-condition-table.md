@@ -4,7 +4,7 @@ status: accepted
 
 # A human-confirmed condition table sits between the documents and every answer
 
-The customer needs comparisons that do not depend on one reader's interpretation, and the model that fits on the target hardware (9B parameters, 4-bit) is unreliable at comparing numbers and at reasoning across several clauses. So the local model only extracts claim conditions and exclusions from clause text into a spreadsheet. A person confirms that spreadsheet once, and everything after it is computed from the confirmed table: code checks thresholds, amounts and limits, and the model is asked only whether an incident's cause falls under a specific exclusion.
+The customer needs comparisons that do not depend on one reader's interpretation, and the model that fits on the target hardware (9B parameters, 4-bit) is unreliable at comparing numbers and at reasoning across several clauses. So the local model only extracts claim conditions and exclusions from clause text into a spreadsheet. A person confirms that spreadsheet once, and everything after it is computed from the confirmed table: code checks thresholds, time windows, amounts and limits, and the model is asked only to judge one provision at a time, such as whether the facts fall within a Condition's covered event or whether a specific exclusion applies.
 
 ## Considered options
 

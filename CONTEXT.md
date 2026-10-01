@@ -7,7 +7,7 @@ The language used when comparing travel-inconvenience insurance (旅遊不便險
 ### Policy text
 
 **Product** (商品):
-One insurer's travel-inconvenience policy. It is the unit being compared.
+One insurer's policy that provides travel-inconvenience cover, either as the whole policy or as one chapter of a comprehensive travel policy. It is the unit being compared, and one insurer can sell several.
 _Avoid_: Policy, insurer, plan
 
 **Clause** (條款):
@@ -55,5 +55,5 @@ Why the incident in a Scenario happened, such as weather, mechanical failure, a 
 _Avoid_: Dependency (相依), reason
 
 **Verdict** (判定):
-The outcome of one Scenario against one Product: paid, not paid, or undetermined. An undetermined Verdict always states why: the Cause is ambiguous, the Scenario lacks a fact, or the Clauses are silent.
+The outcome of one Scenario against one Product in one Wording version: paid, not paid, or undetermined. An undetermined Verdict always states why: the Cause is ambiguous (its classification, even under an undefined term such as 不可抗力, changes the outcome), the Scenario lacks a fact, or the Clauses are silent (no Clause settles the situation).
 _Avoid_: Answer, decision, escalation

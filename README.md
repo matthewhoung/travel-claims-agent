@@ -4,7 +4,7 @@ A local agent that turns travel-inconvenience insurance clauses (旅遊不便險
 
 It runs entirely on one laptop with an 8 GB GPU. No document, prompt, or trace leaves the machine.
 
-**Status:** the design is settled and the public corpus is collected. No application code is in the repository yet. The [roadmap](#roadmap) shows what comes next.
+**Status:** the design is settled and the public corpus is collected. No application code is in the repository yet. The full specification is [issue #1](https://github.com/matthewhoung/travel-claims-agent/issues/1), and the [roadmap](#roadmap) shows what comes next.
 
 ---
 
@@ -24,11 +24,11 @@ Both examples below were written by hand from the collected documents to show th
 
 One row per parameter, one column per product and wording version. The regulator's reference clauses changed on 2026-04-01, so the same product exists in an old and a new wording.
 
-Flight delay (班機延誤), Cathay Century, old versus new wording:
+Flight delay (班機延誤), Cathay Century 享樂遊海外旅行綜合保險, old versus new wording:
 
 | | Old wording | New wording |
 |---|---|---|
-| Benefit variants | one: a fixed amount for each full 4 hours | two: progressive fixed amount (定額給付－累進式) and reimbursement of actual costs (實支實付) |
+| Delay measured until | the actual departure or the first replacement flight; the next replacement flight if force majeure (不可抗力) prevented taking the first | the actual departure of the flight or of the first replacement flight |
 | Typhoon exclusion | none | excluded if a sea typhoon warning (海上颱風警報) was already issued when the policy was bought |
 | Strike exclusion | strike already announced or under way | also excluded if the right to strike was already obtained or a strike period was pre-announced |
 
@@ -49,7 +49,7 @@ A scenario is judged against every product and wording version. Each cell is a v
 
 | | Old wording | New wording |
 |---|---|---|
-| Cathay Century | Paid: delay of 4 hours or more (第三十條) | Not paid: typhoon-warning exclusion (第三十一條 二) |
+| Cathay Century 享樂遊 | Paid: delay of 4 hours or more (第三十條) | Not paid: typhoon-warning exclusion (第三十一條 二) |
 
 When the cause is unclear, the system does not pick one:
 
@@ -58,7 +58,7 @@ When the cause is unclear, the system does not pick one:
 
 | | New wording |
 |---|---|
-| Cathay Century | **Undetermined: the cause is ambiguous.** Not taking the first replacement flight is excluded, unless force majeure (不可抗力) prevented it, and the clauses do not define that term (第三十一條 五). If the road closure counts as force majeure: paid. If not: not paid. |
+| Cathay Century 享樂遊 | **Undetermined: the cause is ambiguous.** Not taking the first replacement flight is excluded, unless force majeure (不可抗力) prevented it, and the clauses do not define that term (第三十一條 五). If the road closure counts as force majeure: paid. If not: not paid. |
 
 If one incident triggers more than one condition in the same product, the matrix marks the overlap and says whether an aggregate limit in the clauses already resolves it.
 
@@ -80,7 +80,7 @@ flowchart LR
 Three choices shape the design:
 
 - **A person confirms the condition table before anything is answered from it.** The local model extracts. It does not decide. ([ADR 0001](docs/adr/0001-human-confirmed-condition-table.md))
-- **Code does the arithmetic.** Thresholds, amounts and limits are computed from the confirmed table. The model is asked only whether an incident's cause falls under a specific exclusion, so the same input gives the same answer.
+- **Code does the arithmetic.** Thresholds, time windows, delay periods, amounts and limits are computed from the confirmed table. Besides reading the Scenario, the model judges one provision at a time, such as whether the facts fall within a covered event or under a specific exclusion, so the same input gives the same answer.
 - **An unclear cause gives a conditional verdict.** The system shows the outcome under each reading and names the clause it turns on. ([ADR 0002](docs/adr/0002-conditional-verdict-when-cause-is-unclear.md))
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) covers the pipeline, the table layout, and how the models share one 8 GB GPU. [CONTEXT.md](CONTEXT.md) defines the vocabulary.
@@ -91,8 +91,8 @@ Expected answers come mainly from third parties, not from the author.
 
 | Source | Items | Wording |
 |---|---|---|
-| Financial Ombudsman Institution decisions (金融消費評議中心), public and anonymised | about 25 | old |
-| Non-Life Insurance Association Q&A on the 2026 wording | about 25 of its 35 items | new |
+| Financial Ombudsman Institution decisions (金融消費評議中心), public and anonymised | about 25 (6 collected so far) | old |
+| Non-Life Insurance Association Q&A on the 2026 wording | about 16 of its 35 items: those describing a situation under a judged benefit | new |
 | Hand-written threshold cases, cross-checked with a second model | about 20 | both |
 
 | Metric | What it measures |
@@ -100,8 +100,9 @@ Expected answers come mainly from third parties, not from the author.
 | Verdict accuracy | is each cell of the matrix right |
 | Conditionally correct | against a ruling, one branch of a conditional verdict matches and names the clause the ruling turned on; reported separately |
 | Undetermined rate | how often the system declines to judge |
+| Citation accuracy | share of expected Clauses the system cites |
 | Extraction accuracy | share of extracted fields the reviewer did not have to change |
-| Run-to-run consistency | same input three times, same verdict |
+| Run-to-run consistency | the same document imported twice gives the same extracted fields; the same Scenario run three times gives the same outcome for every Condition |
 | Retrieval and rerank on or off | whether they change verdict accuracy |
 | 9B versus 4B | what a weaker machine would cost in accuracy |
 
@@ -109,16 +110,16 @@ Expected answers come mainly from third parties, not from the author.
 
 *Filled in as runs complete.*
 
-| Model | Verdict acc. | Cond. correct | Undetermined | Extraction acc. | Consistency | VRAM peak (MB) | Decode tok/s |
-|---|---|---|---|---|---|---|---|
-| Qwen3.5-9B Q4_K_M | | | | | | | |
-| Qwen3.5-4B Q4_K_M | | | | | | | |
+| Model | Verdict acc. | Cond. correct | Undetermined | Citation acc. | Extraction acc. | Consistency | VRAM peak (MB) | Decode tok/s |
+|---|---|---|---|---|---|---|---|---|
+| Qwen3.5-9B Q4_K_M | | | | | | | | |
+| Qwen3.5-4B Q4_K_M | | | | | | | | |
 
 ## Scope
 
 **In scope for the proof of concept**
 
-- Three insurers (Cathay Century, Shinkong, Fubon), each in the old and the new wording.
+- Three insurers and four Products: Cathay Century 享樂遊 (old and new wording) and 享暢行 (new wording only), Fubon 個人海外旅行不便保險 and Shinkong 個人海外旅行不便綜合保險 (old and new wording each).
 - Alignment across all six standard benefits: trip cancellation, flight delay, trip change, baggage delay, baggage loss, and loss of travel documents.
 - Scenario judging for flight delay, trip cancellation and trip change, where cause is most contested.
 
