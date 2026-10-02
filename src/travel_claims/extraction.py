@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from travel_claims.conditions import (
     ALL,
+    BENEFIT_NAMES,
     Benefit,
     ClauseRef,
     Condition,
@@ -26,15 +27,6 @@ from travel_claims.local_models import (
 )
 from travel_claims.policies import Clause, Wording
 
-# A Benefit is named in its chapter title or in its Clause headings.
-_BENEFIT_NAMES = {
-    "旅程取消": Benefit.TRIP_CANCELLATION,
-    "班機延誤": Benefit.FLIGHT_DELAY,
-    "旅程更改": Benefit.TRIP_CHANGE,
-    "行李延誤": Benefit.BAGGAGE_DELAY,
-    "行李損失": Benefit.BAGGAGE_LOSS,
-    "旅行文件損失": Benefit.TRAVEL_DOCUMENT_LOSS,
-}
 # The other Benefits are extracted once they are judged or aligned.
 _EXTRACTED_BENEFITS = (Benefit.FLIGHT_DELAY,)
 
@@ -95,8 +87,9 @@ def _scope(clause: Clause) -> tuple[ClauseRole, Benefit | None] | None:
         return ClauseRole.GENERAL_EXCLUSIONS, None
     if heading.startswith("保險期間"):
         return ClauseRole.POLICY_PERIOD, None
+    # A Benefit is named in its chapter title or in its Clause headings.
     names = f"{clause.chapter or ''}{heading}"
-    benefit = next((b for name, b in _BENEFIT_NAMES.items() if name in names), None)
+    benefit = next((b for name, b in BENEFIT_NAMES.items() if name in names), None)
     if benefit not in _EXTRACTED_BENEFITS:
         return None
     if "承保範圍" in heading:

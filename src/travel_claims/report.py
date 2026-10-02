@@ -9,7 +9,14 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from travel_claims.judging import VerdictMatrix
-from travel_claims.local_models import ArrangedBy, Incident, Replacement, ScenarioFacts
+from travel_claims.local_models import (
+    UNDATED,
+    UNDATED_DAYS,
+    ArrangedBy,
+    Incident,
+    Replacement,
+    ScenarioFacts,
+)
 
 _MATRIX = "Verdict matrix"
 _FACTS = "Facts"
@@ -175,4 +182,11 @@ def _replacement(replacement: Replacement) -> str:
 
 
 def _time(moment: datetime | None) -> str:
-    return "not stated" if moment is None else moment.strftime("%Y-%m-%d %H:%M")
+    if moment is None:
+        return "not stated"
+    days = (moment.date() - UNDATED).days
+    if 0 <= days <= UNDATED_DAYS:
+        # A time given without a date, counted in days from the booked flight's.
+        later = {0: "", 1: " the next day"}.get(days, f", {days} days later")
+        return f"{moment.strftime('%H:%M')}{later} (no date stated)"
+    return moment.strftime("%Y-%m-%d %H:%M")

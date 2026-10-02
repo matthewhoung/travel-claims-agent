@@ -9,7 +9,7 @@ scripted fake, and nothing else.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 
@@ -81,6 +81,13 @@ class Extraction:
 
 
 # The facts of a Scenario ---------------------------------------------------------
+
+
+# The day a Scenario's times fall on when it gives times but no dates, counted
+# from the booked flight's day. Only differences between such times mean anything.
+UNDATED = date(2000, 1, 1)
+# The most days after the booked flight's that an undated time can fall on.
+UNDATED_DAYS = 31
 
 
 class Leg(StrEnum):
@@ -163,6 +170,9 @@ class Provision:
 
 @dataclass(frozen=True)
 class JudgementRequest:
+    """A provision to judge. Judging asks only once code has found that the facts
+    meet the threshold and the time windows, so those are not in question."""
+
     provision: Provision
     facts: ScenarioFacts
     # The provision's own Clause, and related Clauses as context.

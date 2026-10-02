@@ -4,7 +4,7 @@ A local agent that turns travel-inconvenience insurance clauses (旅遊不便險
 
 It runs entirely on one laptop with an 8 GB GPU. No document, prompt, or trace leaves the machine.
 
-**Status:** the design is settled and the public corpus is collected. The code lists the policies in a clause PDF by rules, with no model. It imports a policy as a Product into a draft workbook for review, and checks the reviewed workbook. Extraction goes through a local-models port, which so far only the tests' scripted stand-in implements; the adapter for the real local models is next. The full specification is [issue #1](https://github.com/matthewhoung/travel-claims-agent/issues/1), and the [roadmap](#roadmap) shows what comes next.
+**Status:** the design is settled and the public corpus is collected. The code lists the policies in a clause PDF by rules, with no model. It imports a policy as a Product into a draft workbook for review, and checks the reviewed workbook. It judges a flight-delay Scenario against confirmed workbooks. Every model call goes through a local-models port, served on this machine by llama-server. On the real model, importing 享樂遊 twice gives identical extracted fields; the run that records the two example Scenarios' Verdicts follows the reviewer's confirmation of its workbook. The full specification is [issue #1](https://github.com/matthewhoung/travel-claims-agent/issues/1), and the [roadmap](#roadmap) shows what comes next.
 
 ---
 
@@ -165,10 +165,11 @@ travel-claims-agent/
 ├── CONTEXT.md               # vocabulary: Clause, Condition, Alignment, Overlap, Verdict, ...
 ├── models.ini               # llama-server presets: Qwen3.5-9B and 4B
 ├── .env.example             # paths and air-gap switches; copy to .env
-├── src/travel_claims/       # the application: List policies, Import a Product, Load a workbook
+├── src/travel_claims/       # the application interface, and the adapter for the local models
 ├── tests/                   # fixtures/ holds page text captured from the clause PDFs
-├── scripts/                 # model download, router, smoke test; capture_fixture.py for fixtures
+├── scripts/                 # model download, router, smoke test, real-model run; fixtures
 ├── results/smoke/           # one result file and router log per smoke-test run
+├── results/real-run/        # one result file per step of the run on the real model
 ├── models/                  # model weights, git-ignored
 ├── store/                   # Clause store of imported Products, git-ignored
 ├── workbooks/               # draft and confirmed workbooks, git-ignored
@@ -288,7 +289,7 @@ uv run travel-claims import data/clauses/cathay/travel-bundle.new-wording.pdf \
   --policy 6 --product 享樂遊 --wording new
 ```
 
-The local models extract the flight-delay Conditions and exclusions, and the general provisions, into a draft workbook, `workbooks/享樂遊.new.xlsx`. Import never overwrites a workbook. All of the policy's Clauses go to the Clause store in `store/`, which later steps cite and judge from. Until the real local-model adapter lands, `import` stops with a message saying the local models are not connected.
+The local models extract the flight-delay Conditions and exclusions, and the general provisions, into a draft workbook, `workbooks/享樂遊.new.xlsx`. Import never overwrites a workbook. All of the policy's Clauses go to the Clause store in `store/`, which later steps cite and judge from. `import` and `judge` reach the models through the router started by `scripts/serve_models.sh`, so start it first; `LLM_MODEL` in `.env` picks the model, `qwen3.5-9b` or `qwen3.5-4b`.
 
 A reviewer checks the workbook in Excel, corrects it, and records who confirmed it and when above the Conditions table. Load then lists every problem at once, such as a missing field, a Clause reference that is not among the stored Clauses, an exclusion that applies to an unknown Condition key, or a missing confirmation record. It also counts how many extracted fields the reviewer changed:
 
@@ -342,7 +343,19 @@ When the outcome cannot be decided, the cell says why: the Scenario lacks a fact
       the exclusion applies: 被保險人未搭乘航空業者所提供之第一班替代交通工具。
 ```
 
-`--export verdicts.xlsx` also writes the Verdict matrix, the facts read and the per-Condition breakdown, with a row per reading, to a new Excel file. Flight delay in the new wording is judged so far. Like `import`, `judge` needs the real local-model adapter.
+`--export verdicts.xlsx` also writes the Verdict matrix, the facts read and the per-Condition breakdown, with a row per reading, to a new Excel file. Flight delay in the new wording is judged so far.
+
+### Running 享樂遊 end to end on the real model
+
+`scripts/run_hsiang_le_you.py` checks the whole path on the real model, in two steps around the reviewer's confirmation. Each step drives the same commands as above, records the most models the router held at once, and writes `results/real-run/<time>-<step>.json`. Run inside a namespace with only a loopback interface, with `--serve` to start the router in it, to show that nothing needs the network:
+
+```bash
+unshare -rn sh -c 'ip link set lo up && .venv/bin/python scripts/run_hsiang_le_you.py import --serve'
+# review and confirm workbooks/享樂遊.new.xlsx in Excel, then:
+unshare -rn sh -c 'ip link set lo up && .venv/bin/python scripts/run_hsiang_le_you.py judge --serve'
+```
+
+`import` imports 享樂遊 into `workbooks/享樂遊.new.xlsx` and again into a scratch directory, and checks that both give identical extracted fields. `judge` loads the confirmed workbook, recording its extracted and changed field counts, then judges each README Scenario three times and checks that every run gives the same outcomes and the README's Verdicts.
 
 The remaining run commands will be documented here as the code lands.
 

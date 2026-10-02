@@ -2,7 +2,7 @@
 
 This document explains how the system is put together and why. The [README](../README.md) covers what it is for, [DISCOVERY.md](DISCOVERY.md) covers where the requirements came from, and [CONTEXT.md](../CONTEXT.md) defines the terms used here (Clause, Condition, Alignment, Overlap, Verdict and others).
 
-Implemented so far: splitting documents into Clauses (section 3.1), importing a Product into a draft workbook and loading the reviewed workbook (section 3.2), judging a flight delay in the new wording, with undetermined outcomes and export to Excel (section 3.4, without retrieval), and the local model runtime (section 4). Import and judging go through the local-models port, which only the tests' scripted stand-in implements until the real adapter is built.
+Implemented so far: splitting documents into Clauses (section 3.1), importing a Product into a draft workbook and loading the reviewed workbook (section 3.2), judging a flight delay in the new wording, with undetermined outcomes and export to Excel (section 3.4, without retrieval), and the local model runtime (section 4). Import and judging go through the local-models port, served by llama-server (section 4.6); retrieval is not served yet.
 
 ## 1. Constraints
 
@@ -322,6 +322,19 @@ ctx-size = 8192
 | A vector database service exposed on a port | none runs; Qdrant is embedded in the Python process |
 
 **Proof:** the final demo runs the full pipeline, from PDF import to verdict matrix to trace, with the laptop in airplane mode. The model runtime is already shown to need no network: the smoke test passes inside a network namespace that has only a loopback interface (`unshare -rn`).
+
+### 4.6 The local-models adapter
+
+`src/travel_claims/llama_server.py` serves the port through the router's OpenAI-compatible API on 127.0.0.1. `LLAMA_PORT` and `LLM_MODEL` in `.env` configure it, so switching between the 9B and the 4B is one setting.
+
+- **Deterministic requests.** Temperature 0, seed 42, slot 0, no reuse of a cached prompt. Every request names the same model, so with `--models-max 1` only that model is on the GPU.
+- **No thinking.** Qwen3.5 thinks by default. With thinking on, a single provision judgement ran past 6,000 tokens (more than two minutes) without answering, so every request turns it off and the schema carries the steps instead.
+- **A JSON schema per answer type.** Extraction has one schema per role of Clause, with the exclusion types and coverage requirements of the Benefit as fixed values. Each requirement is a yes or no, and every list has a maximum length: with greedy decoding an open list can repeat one entry until the answer is cut off. Scenario facts give each time as a date, a day and a time of day; a time with no date is placed on a fixed undated day, counted from the booked flight's day, so code can still measure between times. A cut-off answer is refused, not parsed.
+- **Judging steps the schema enforces.** The answer is reached in fixed steps, and each step's value limits what follows, so the rules that matter most do not depend on the model following prose:
+  - `about` and `mentioned`: whether the facts say anything about the provision's matter. If not, the only answer allowed is the default (an exclusion or proviso does not apply; a covered event or requirement is met), since what a Scenario does not mention did not happen.
+  - `fits`: whether the facts fit the provision's own words: yes or no settles it, and only an open answer can name a missing fact or say the Clause leaves the situation unaddressed.
+  - For a provision that concerns the Cause: the term in its own words that classifies the Cause (such as 不可抗力 or 本身事由), whether the rest of its words fit, what caused the event as the facts tell it, and whether that cause is plainly within the term, plainly outside it, or unclear. Only an unclear classification may, and must, answer that the provision turns on the Cause, with each reading. A provision that does not concern the Cause is never offered that answer.
+- **What the prompts are tuned on.** The judging prompts were tuned on every provision of 享樂遊 against the README's two Scenarios, until all 37 judgements matched the Clauses. That is two Scenarios; the evaluation set measures how far it generalises.
 
 ## 5. Evaluation
 

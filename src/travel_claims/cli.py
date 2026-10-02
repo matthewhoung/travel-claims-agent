@@ -3,7 +3,7 @@
 import argparse
 import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from travel_claims.app import (
@@ -18,6 +18,7 @@ from travel_claims.app import (
 from travel_claims.clause_store import ClauseStore
 from travel_claims.conditions import ClauseRef
 from travel_claims.judging import OutOfContract, Reason, Verdict, VerdictMatrix
+from travel_claims.llama_server import MalformedAnswer, configured_models
 from travel_claims.local_models import LocalModels
 from travel_claims.policies import Policy, Wording
 from travel_claims.report import describe_facts
@@ -29,7 +30,11 @@ _WORKBOOKS = Path("workbooks")
 
 
 def main(argv: Sequence[str] | None = None, models: LocalModels | None = None) -> None:
-    """Run a command. `models` serves the local-models port; tests pass a scripted one."""
+    """Run a command. `models` serves the local-models port; tests pass a scripted one.
+
+    Otherwise import and judge use llama-server, configured by .env in the
+    working directory and the environment, which takes precedence.
+    """
     parser = argparse.ArgumentParser(prog="travel-claims")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -86,17 +91,22 @@ def main(argv: Sequence[str] | None = None, models: LocalModels | None = None) -
         for index, policy in enumerate(list_policies(args.document), start=1):
             print(_describe(index, policy))
     elif args.command == "import":
-        if models is None:
-            parser.error("import needs the local models, which are not connected yet")
-        _import(args, models, parser)
+        _with_models(lambda: _import(args, models or configured_models(), parser))
     elif args.command == "judge":
-        if models is None:
-            parser.error("judge needs the local models, which are not connected yet")
         if args.export is not None and args.export.exists():
             parser.error(f"{args.export} already exists; name a new file for the export")
-        _judge(args, models)
+        _with_models(lambda: _judge(args, models or configured_models()))
     else:
         _load(args)
+
+
+def _with_models(command: Callable[[], None]) -> None:
+    """Run a command that calls the local models; say so and stop if they fail."""
+    try:
+        command()
+    except (ConnectionError, MalformedAnswer) as error:
+        print(f"travel-claims: error: {error}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _import(args: argparse.Namespace, models: LocalModels, parser: argparse.ArgumentParser) -> None:

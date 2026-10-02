@@ -1,6 +1,7 @@
 """The command line: a thin shell over the application interface."""
 
-from datetime import date, datetime, timedelta, timezone
+import socket
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 import openpyxl
@@ -9,6 +10,7 @@ import pytest
 from travel_claims.cli import main
 from travel_claims.conditions import Benefit
 from travel_claims.local_models import (
+    UNDATED,
     ArrangedBy,
     Incident,
     Leg,
@@ -324,4 +326,68 @@ def test_judge_refuses_a_workbook_with_problems_and_lists_them(
         f"{workbook}: 2 problems\n"
         "Conditions!B1: Confirmed by is missing\n"
         "Conditions!B2: Confirmed on is missing\n"
+    )
+
+
+def test_import_uses_the_local_models_configured_and_says_when_they_are_not_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        closed = probe.getsockname()[1]
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(f"LLAMA_PORT={closed}\nLLM_MODEL=qwen3.5-4b\n")
+
+    with pytest.raises(SystemExit) as exit:
+        main(["import", str(hsiang_le_you.FIXTURE), "--product=享樂遊", "--wording=new"])
+
+    assert exit.value.code == 1
+    error = capsys.readouterr().err
+    assert f"llama-server is not reachable at http://127.0.0.1:{closed}" in error
+    assert "scripts/serve_models.sh" in error
+    assert not (tmp_path / "workbooks").exists()
+
+
+def test_judge_prints_times_given_without_a_date_as_times_of_day(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+    hsiang_le_you.confirm(workbook)
+    scheduled = datetime.combine(UNDATED, time(22, 0), hsiang_le_you.TAIPEI)
+    facts = ScenarioFacts(
+        benefits=(Benefit.FLIGHT_DELAY,),
+        incidents=(
+            Incident(
+                leg=Leg.OUTBOUND,
+                airport=None,
+                transport="flight",
+                scheduled_departure=scheduled,
+                replacements=(
+                    Replacement(
+                        departure=scheduled + timedelta(hours=3),
+                        arranged_by=ArrangedBy.AIRLINE,
+                        taken=True,
+                    ),
+                ),
+            ),
+        ),
+        within_policy_period=True,
+    )
+    models = ScriptedModels(facts=facts, judgements=hsiang_le_you.NOTHING_APPLIES)
+
+    main(
+        [
+            "judge",
+            "--scenario=去程班機原定 22:00 起飛……",
+            str(workbook),
+            f"--store={store.directory}",
+        ],
+        models=models,
+    )
+
+    facts_read = capsys.readouterr().out.split("\n\n")[0]
+    assert "    scheduled departure 22:00 (no date stated)\n" in facts_read
+    assert (
+        "    replacement departing 01:00 the next day (no date stated), arranged by the airline"
+        in facts_read
     )

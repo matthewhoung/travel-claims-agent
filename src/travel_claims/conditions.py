@@ -24,6 +24,17 @@ class Benefit(StrEnum):
     TRAVEL_DOCUMENT_LOSS = "loss of travel documents"
 
 
+# Each Benefit's name in the Clauses.
+BENEFIT_NAMES = {
+    "旅程取消": Benefit.TRIP_CANCELLATION,
+    "班機延誤": Benefit.FLIGHT_DELAY,
+    "旅程更改": Benefit.TRIP_CHANGE,
+    "行李延誤": Benefit.BAGGAGE_DELAY,
+    "行李損失": Benefit.BAGGAGE_LOSS,
+    "旅行文件損失": Benefit.TRAVEL_DOCUMENT_LOSS,
+}
+
+
 class BenefitType(StrEnum):
     PROGRESSIVE = "progressive fixed amount"
     ONE_OFF = "one-off fixed amount"

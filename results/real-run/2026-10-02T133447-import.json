@@ -1,0 +1,31 @@
+{
+  "step": "import",
+  "started": "2026-10-02T13:34:47+08:00",
+  "model": "qwen3.5-9b",
+  "network_interfaces": [
+    "lo"
+  ],
+  "document": "data/clauses/cathay/travel-bundle.new-wording.pdf",
+  "policy": 6,
+  "workbook": "workbooks/享樂遊.new.xlsx",
+  "imports": [
+    {
+      "seconds": 57.5,
+      "clauses": 82,
+      "conditions": 1,
+      "exclusions": 15
+    },
+    {
+      "seconds": 54.9,
+      "clauses": 82,
+      "conditions": 1,
+      "exclusions": 15
+    }
+  ],
+  "extracted_rows_sha256": "1795107100b995e77403ee0c5b7c007a3b28c6b0fa40d6c66d19837d4735a6e5",
+  "checks": {
+    "two_imports_identical": true
+  },
+  "most_models_resident": 1,
+  "passed": true
+}
