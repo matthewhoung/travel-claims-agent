@@ -17,6 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from travel_claims.clause_store import ClauseStore
 from travel_claims.conditions import (
     COVERED_CAUSES,
+    Availability,
     Benefit,
     BenefitType,
     ClauseRef,
@@ -96,6 +97,21 @@ class TurningProvision:
 
 
 @dataclass(frozen=True)
+class PlanAmount:
+    """What a paid outcome pays under one Plan, from a published Benefit amount."""
+
+    plan: str
+    # In whole NT$: per step for a progressive fixed amount, once for a one-off
+    # fixed amount, the Plan's limit for reimbursement.
+    benefit_amount: int
+    # A fixed amount's total: the steps times the amount, capped at the maximum
+    # per incident. None for a progressive benefit with no maximum, whose
+    # amount per step and step count are shown instead, and for reimbursement.
+    total: int | None
+    source: str
+
+
+@dataclass(frozen=True)
 class ConditionOutcome:
     """The outcome of one Condition for one incident of the Scenario."""
 
@@ -117,6 +133,9 @@ class ConditionOutcome:
     reason: Reason | None = None
     # For a Cause-ambiguous outcome, each provision it turns on.
     turns_on: tuple[TurningProvision, ...] = ()
+    # For a paid outcome, what each Plan pays, where its amount is published.
+    # The Verdict never depends on it.
+    amounts: tuple[PlanAmount, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -679,8 +698,35 @@ def _paid(item: _ConditionIncident, delay: timedelta) -> ConditionOutcome:
     elif condition.benefit_type is BenefitType.ONE_OFF:
         grounds += ": one payment"
     return ConditionOutcome(
-        condition.key, item.incident, Verdict.PAID, grounds, condition.clause, delay, steps
+        condition.key,
+        item.incident,
+        Verdict.PAID,
+        grounds,
+        condition.clause,
+        delay,
+        steps,
+        amounts=_plan_amounts(item, steps),
     )
+
+
+def _plan_amounts(item: _ConditionIncident, steps: int | None) -> tuple[PlanAmount, ...]:
+    """What each Plan pays, for the Plans whose Benefit amount is published."""
+    paid = []
+    benefit_type = item.condition.benefit_type
+    for amount in item.table.amounts_of(item.condition):
+        if amount.availability is not Availability.PUBLISHED:
+            continue
+        # Load requires them of a published amount.
+        assert amount.plan and amount.benefit_amount is not None and amount.source
+        total: int | None = None
+        if benefit_type is BenefitType.ONE_OFF:
+            total = amount.benefit_amount
+        elif benefit_type is BenefitType.PROGRESSIVE and amount.max_per_incident is not None:
+            total = (steps or 0) * amount.benefit_amount
+        if total is not None and amount.max_per_incident is not None:
+            total = min(total, amount.max_per_incident)
+        paid.append(PlanAmount(amount.plan, amount.benefit_amount, total, amount.source))
+    return tuple(paid)
 
 
 def _time(moment: datetime) -> str:

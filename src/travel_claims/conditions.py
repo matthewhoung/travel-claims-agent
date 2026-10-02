@@ -68,10 +68,39 @@ class ExclusionType(StrEnum):
     SELF_ARRANGED_ELSEWHERE = "self-arranged replacement to another destination"
     AIRLINE_INSOLVENCY = "airline insolvency"
 
+    # Baggage delay
+    RETURN_TO_TAIWAN_AIRPORT = "delay on return to an airport in Taiwan"
+    RETURN_HOME = "delay on return home"
+    SENT_SEPARATELY = "baggage sent in advance or separately"
+
+    # Baggage loss: the items not covered
+    BUSINESS_GOODS_AND_VALUABLES = "business goods, vehicles, jewellery or phones"
+    MONEY_AND_DOCUMENTS = "money, securities, tickets or travel documents"
+    MANUSCRIPTS_AND_SAMPLES = "manuscripts, samples or business records"
+    CONTRABAND = "contraband or illegal goods"
+    CONTAINERS = "suitcases and other containers"
+    RENTED_EQUIPMENT = "rented equipment"
+    STORED_DATA = "stored data"
+    FRAGILE_ITEMS = "fragile items"
+    PAYMENT_CARDS = "payment cards"
+    # Baggage loss: the incidents not covered
+    WEAR_AND_DEFECTS = "wear, decay or inherent defect"
+    REPAIR_OR_CLEANING = "repair, cleaning or alteration"
+    RIOT_OR_REVOLUTION = "riot, rebellion or revolution"
+    CARRIER_OR_HOTEL_COMPENSATES = "compensated by a carrier or hotel"
+    APPEARANCE_ONLY = "damage to appearance only"
+    LIQUID_LEAKAGE = "liquid leakage"
+    CARRIER_NOT_NOTIFIED = "carrier not notified"
+    UNEXPLAINED_LOSS = "unexplained loss"
+
+    # Loss of travel documents
+    NOT_REPORTED_TO_POLICE = "not reported to the police within 24 hours"
+
     OTHER = "other"
 
 
-# The exclusion types of each Benefit, besides OTHER. A Benefit not listed yet has only OTHER.
+# The exclusion types of each Benefit, besides OTHER, in the order of the
+# reference clauses. A Benefit not listed yet has only OTHER.
 EXCLUSION_TYPES: dict[Benefit, tuple[ExclusionType, ...]] = {
     Benefit.FLIGHT_DELAY: (
         ExclusionType.OWN_REASON,
@@ -82,6 +111,32 @@ EXCLUSION_TYPES: dict[Benefit, tuple[ExclusionType, ...]] = {
         ExclusionType.SELF_ARRANGED_ELSEWHERE,
         ExclusionType.AIRLINE_INSOLVENCY,
     ),
+    Benefit.BAGGAGE_DELAY: (
+        ExclusionType.RETURN_TO_TAIWAN_AIRPORT,
+        ExclusionType.RETURN_HOME,
+        ExclusionType.SENT_SEPARATELY,
+    ),
+    Benefit.BAGGAGE_LOSS: (
+        ExclusionType.BUSINESS_GOODS_AND_VALUABLES,
+        ExclusionType.MONEY_AND_DOCUMENTS,
+        ExclusionType.MANUSCRIPTS_AND_SAMPLES,
+        ExclusionType.CONTRABAND,
+        ExclusionType.SENT_SEPARATELY,
+        ExclusionType.CONTAINERS,
+        ExclusionType.RENTED_EQUIPMENT,
+        ExclusionType.STORED_DATA,
+        ExclusionType.FRAGILE_ITEMS,
+        ExclusionType.PAYMENT_CARDS,
+        ExclusionType.WEAR_AND_DEFECTS,
+        ExclusionType.REPAIR_OR_CLEANING,
+        ExclusionType.RIOT_OR_REVOLUTION,
+        ExclusionType.CARRIER_OR_HOTEL_COMPENSATES,
+        ExclusionType.APPEARANCE_ONLY,
+        ExclusionType.LIQUID_LEAKAGE,
+        ExclusionType.CARRIER_NOT_NOTIFIED,
+        ExclusionType.UNEXPLAINED_LOSS,
+    ),
+    Benefit.TRAVEL_DOCUMENT_LOSS: (ExclusionType.NOT_REPORTED_TO_POLICE,),
 }
 
 # The coverage requirements a Condition of each Benefit may state.
@@ -163,3 +218,34 @@ class Exclusion:
     def applies_to_condition(self, condition: Condition) -> bool:
         """Whether "applies to" names the Condition: by its key, its Benefit, or all."""
         return bool({condition.key, str(condition.benefit), ALL}.intersection(self.applies_to))
+
+
+class Availability(StrEnum):
+    """Whether a Benefit amount is known: published, or why it is not available."""
+
+    PUBLISHED = "published"
+    NOT_PUBLISHED = "not published"
+    NOT_COLLECTED = "not collected"
+
+
+@dataclass(frozen=True)
+class Amount:
+    """A row of the Amounts sheet: a Condition's Benefit amount under a Plan, and its source.
+
+    Amounts are whole NT$. For a progressive fixed amount the Benefit amount is
+    per step; for a reimbursement Condition it is the Plan's limit. A row that
+    is not published or not collected may leave the Plan, the amounts and the
+    source empty, and may name ALL in place of a Condition key.
+    """
+
+    condition: str
+    availability: Availability
+    plan: str | None = None
+    benefit_amount: int | None = None
+    max_per_incident: int | None = None
+    source: str | None = None
+
+
+def nt_dollars(amount: int) -> str:
+    """A whole amount of NT$, as in NT$12,000."""
+    return f"NT${amount:,}"

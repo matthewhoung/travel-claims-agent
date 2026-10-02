@@ -18,6 +18,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 
 from travel_claims.conditions import (
+    Availability,
     Benefit,
     BenefitType,
     Condition,
@@ -95,7 +96,7 @@ _CHOICES: dict[str, Sequence[str]] = {
     "Benefit type": list(BenefitType),
     "Exclusion type": list(ExclusionType),
     "Concerns Cause": list(YesNo),
-    "Availability": ("published", "not published", "not collected"),
+    "Availability": list(Availability),
 }
 _LAST_CHOICE_ROW = 1000
 # The confirmation record and the tables' headings are looked for in the first
@@ -148,7 +149,7 @@ def write_draft(
     exclusions: Sequence[Exclusion],
 ) -> None:
     """Write a draft workbook, with no confirmation record and no amounts."""
-    condition_rows = [_condition_row(c) for c in conditions]
+    condition_rows = [condition_row(c) for c in conditions]
     exclusion_rows = [_exclusion_row(e) for e in exclusions]
 
     book = Workbook()
@@ -254,7 +255,8 @@ def _filled(value: object) -> bool:
     return value is not None and str(value).strip() != ""
 
 
-def _condition_row(c: Condition) -> dict[str, Value]:
+def condition_row(c: Condition) -> dict[str, Value]:
+    """A Condition's values as its row of the Conditions sheet shows them, by column heading."""
     return {
         "Condition key": c.key,
         "Product": c.product,

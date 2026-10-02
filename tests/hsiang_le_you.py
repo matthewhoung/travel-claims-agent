@@ -1,12 +1,15 @@
 """享樂遊 in the new wording, and in the old, as the tests import it.
 
 Each fixture holds its general provisions and its flight-delay Clauses,
-captured from the new- and old-wording bundles. The local models are
+captured from the new- and old-wording bundles; the new one also holds the
+baggage-delay, baggage-loss and travel-document Clauses. The local models are
 scripted to extract the flight-delay Condition, two of its exclusions and one
 general exclusion. The old wording has no typhoon exclusion: its 第三十一條 二
 is the strike exclusion, and its first-replacement exclusion is 第三十一條 四.
 """
 
+import csv
+import re
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -73,6 +76,31 @@ EXTRACTIONS = {
     31: Extraction(exclusions=(TYPHOON, FIRST_REPLACEMENT)),
 }
 
+# The new wording's strike exclusion, widened to a right to strike already obtained.
+STRIKE = ExtractedExclusion(
+    type=ExclusionType.STRIKE,
+    text="要保人向本公司申請訂立保險契約時，公共交通工具業者之受僱人或機場之地勤、運務人員"
+    "已取得罷工權、已預告罷工期間、已宣布罷工或工運活動、已發生罷工或工運活動。",
+    concerns_cause=False,
+    item="三",
+)
+
+# Baggage delay, in the new wording only: the old-wording fixture stops at 第三十二條.
+BAGGAGE_DELAY = ExtractedCondition(
+    covered_event="checked baggage not received 6 hours after arrival",
+    coverage_requirements=(),
+    threshold_hours=6,
+    benefit_type=BenefitType.ONE_OFF,
+    step_hours=None,
+    max_claims_per_period=2,
+)
+RETURN_HOME = ExtractedExclusion(
+    type=ExclusionType.RETURN_HOME,
+    text="被保險人於返回居住所之行李延誤。",
+    concerns_cause=False,
+    item="二",
+)
+
 OLD_STRIKE = ExtractedExclusion(
     type=ExclusionType.STRIKE,
     text="要保人或被保險人向本公司申請訂立保險契約時，已宣布或已發生罷工或工運活動。",
@@ -128,6 +156,50 @@ def confirm(workbook: Path, by: str = "王小明", on: date = date(2026, 10, 1))
     review(workbook, {"Conditions!B1": by, "Conditions!B2": on})
 
 
+# As a person may type them, valid or not.
+AmountRow = tuple[str | float | None, ...]
+
+
+def enter_amounts(workbook: Path, rows: list[AmountRow]) -> None:
+    """Fill the Amounts sheet as a person does, one row per tuple in the sheet's column
+    order: Condition key, Plan, availability, Benefit amount, maximum per incident, source."""
+    book = openpyxl.load_workbook(workbook)
+    for number, row in enumerate(rows, start=2):
+        for column, value in enumerate(row, start=1):
+            book["Amounts"].cell(number, column, value)
+    book.save(workbook)
+
+
+# Published Benefit amounts per Plan, committed with a source URL per row.
+AMOUNTS_TABLE = Path(__file__).parents[1] / "data" / "amounts.csv"
+
+
+def cathay_century_flight_delay(*, maximum: bool = True) -> list[AmountRow]:
+    """Cathay Century's published flight-delay amounts, as Amounts rows of the flight-delay
+    Condition: NT$6,000 per step and at most NT$12,000 per incident, for each Plan.
+
+    Without `maximum`, the maximum per incident is left empty.
+    """
+    with AMOUNTS_TABLE.open(encoding="utf-8") as file:
+        published = [
+            row
+            for row in csv.DictReader(file)
+            if row["insurer"] == "國泰產險" and row["benefit"] == "班機延誤"
+        ]
+    assert published, f"no published flight-delay amounts of Cathay Century in {AMOUNTS_TABLE}"
+    return [
+        (
+            "flight delay",
+            row["tier"],
+            "published",
+            int(re.search(r"(\d+)元", row["amount_rule"]).group(1)),  # type: ignore[union-attr]
+            int(row["max_per_event"]) if maximum else None,
+            row["source_url"],
+        )
+        for row in published
+    ]
+
+
 # Scenarios ------------------------------------------------------------------------
 
 # Times in the policy are Taiwan time (中原標準時間).
@@ -146,6 +218,28 @@ NOTHING_APPLIES: dict[str, Judgement] = {
     "第三十一條 四": Settled(met=False),
     "第三十一條 五": Settled(met=False),
 }
+
+SCHEDULED = datetime(2026, 7, 10, 8, 0, tzinfo=TAIPEI)
+
+
+def delayed_by(delay: timedelta) -> ScenarioFacts:
+    """The outbound flight from 桃園 departs `delay` late, within the policy period."""
+    return ScenarioFacts(
+        benefits=(Benefit.FLIGHT_DELAY,),
+        incidents=(
+            Incident(
+                leg=Leg.OUTBOUND,
+                airport="桃園國際機場",
+                transport="flight",
+                scheduled_departure=SCHEDULED,
+                actual_departure=SCHEDULED + delay,
+            ),
+        ),
+        cause="機械故障",
+        purchased_at=datetime(2026, 7, 1, 12, 0, tzinfo=TAIPEI),
+        policy_period=POLICY_PERIOD,
+    )
+
 
 ROAD_CLOSURE = (
     "保險期間內，去程班機原定 10:00 起飛，延誤後航空公司安排了 15:00 出發的第一班替代班機。"

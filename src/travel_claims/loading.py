@@ -8,7 +8,7 @@ and the fields the reviewer changed, which measures extraction accuracy.
 import re
 from collections import Counter
 from collections.abc import Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -22,6 +22,8 @@ from travel_claims.conditions import (
     ALL,
     COVERAGE_REQUIREMENTS,
     EXCLUSION_TYPES,
+    Amount,
+    Availability,
     Benefit,
     BenefitType,
     ClauseRef,
@@ -83,6 +85,17 @@ class ConditionTable:
     confirmed_on: date
     conditions: tuple[Condition, ...]
     exclusions: tuple[Exclusion, ...]
+    # The rows of the Amounts sheet, in its order.
+    amounts: tuple[Amount, ...] = ()
+
+    def amounts_of(self, condition: Condition) -> tuple[Amount, ...]:
+        """The Amounts rows of a Condition: those naming its key, or failing that those
+        naming all. A Condition with no row is not collected."""
+        own = tuple(a for a in self.amounts if a.condition == condition.key)
+        every = tuple(
+            replace(a, condition=condition.key) for a in self.amounts if a.condition == ALL
+        )
+        return own or every or (Amount(condition.key, Availability.NOT_COLLECTED),)
 
 
 @dataclass(frozen=True)
@@ -139,7 +152,7 @@ def load(path: Path, store: ClauseStore) -> Loaded:
         if (exclusion := _exclusion(row, product, targets, problems)) is not None
     ]
     _force_majeure_readings(condition_rows, conditions, exclusions, problems)
-    _amounts(tables[AMOUNTS].rows, condition_rows, problems)
+    amounts = _amounts(tables[AMOUNTS].rows, condition_rows, product, problems)
 
     extracted_fields, changed_fields = _changes(
         (extracted.conditions, condition_rows, CONDITION_COLUMNS, _CONDITION_IDENTITY),
@@ -148,7 +161,12 @@ def load(path: Path, store: ClauseStore) -> Loaded:
     confirmed = None
     if not problems and confirmation is not None:
         confirmed = ConditionTable(
-            product.name, product.wording, *confirmation, tuple(conditions), tuple(exclusions)
+            product.name,
+            product.wording,
+            *confirmation,
+            tuple(conditions),
+            tuple(exclusions),
+            tuple(amounts),
         )
     return Loaded(
         confirmed, tuple(sorted(problems, key=_reading_order)), extracted_fields, changed_fields
@@ -323,18 +341,47 @@ def _force_majeure_readings(
             )
 
 
-def _amounts(rows: list[Row], condition_rows: list[Row], problems: list[Problem]) -> None:
-    """Amounts name a Condition, or all of them.
+def _amounts(
+    rows: list[Row], condition_rows: list[Row], product: _StoredProduct, problems: list[Problem]
+) -> list[Amount]:
+    """Amounts rows, each naming a Condition, or all of them if it is not published.
 
-    The rest of an Amounts row is checked once the Alignment table uses amounts.
+    A published amount needs its Plan, its Benefit amount and its Source; the
+    others may leave them empty. Amounts are whole NT$.
     """
     keys = {_text(row.values.get("Condition key")) for row in condition_rows} | {ALL}
+    amounts = []
+    first_row: dict[tuple[str, str | None], int] = {}
     for row in rows:
-        key = _text(row.values.get("Condition key"))
-        if key is not None and key not in keys:
-            problems.append(
-                Problem(AMOUNTS, row.cell("Condition key"), f"unknown Condition key: {key}")
-            )
+        fields = _Fields(row, product, problems)
+        key = fields.text("Condition key")
+        if key and key not in keys:
+            fields.problem("Condition key", f"unknown Condition key: {key}")
+        availability = fields.optional_choice("Availability", Availability, required=True)
+        plan = fields.optional_text("Plan")
+        if key and (key, plan) in first_row:
+            under = f"under {plan}" if plan else "with no Plan"
+            fields.problem("Plan", f"{key} {under} is also in row {first_row[key, plan]}")
+        first_row.setdefault((key, plan), row.number)
+        amount = Amount(
+            condition=key,
+            availability=availability or Availability.NOT_COLLECTED,
+            plan=plan,
+            benefit_amount=fields.nt_dollars("Benefit amount"),
+            max_per_incident=fields.nt_dollars("Maximum per incident"),
+            source=fields.optional_text("Source"),
+        )
+        if availability is Availability.PUBLISHED:
+            if key == ALL:
+                fields.problem(
+                    "Condition key", f"a published amount needs a Condition key, not {ALL}"
+                )
+            for heading in ("Plan", "Benefit amount", "Source"):
+                if _text(row.values.get(heading)) is None:
+                    fields.problem(heading, f"a published amount needs its {heading}")
+        if fields.valid:
+            amounts.append(amount)
+    return amounts
 
 
 class _Fields:
@@ -416,6 +463,20 @@ class _Fields:
             return None
         if number != int(number) or number < 0:
             self.problem(heading, f"{heading} is not a whole number: {number:g}")
+            return None
+        return int(number)
+
+    def nt_dollars(self, heading: str) -> int | None:
+        """A whole number of NT$; None if the cell is empty."""
+        text = _text(self._row.values.get(heading))
+        if text is None:
+            return None
+        try:
+            number = float(text)
+        except ValueError:
+            number = -1
+        if number < 0 or not number.is_integer():
+            self.problem(heading, f"{heading} is not a whole number of NT$: {text}")
             return None
         return int(number)
 

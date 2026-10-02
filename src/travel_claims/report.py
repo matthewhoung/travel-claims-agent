@@ -1,4 +1,5 @@
-"""How a Verdict matrix is shown: the facts as labelled lines, and the whole matrix in Excel."""
+"""How results are shown: a Verdict matrix's facts as labelled lines and amounts as
+text, and the Verdict matrix and the Alignment table in Excel."""
 
 from datetime import datetime
 from pathlib import Path
@@ -8,7 +9,9 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from travel_claims.judging import VerdictMatrix
+from travel_claims.alignment import AlignmentTable
+from travel_claims.conditions import nt_dollars
+from travel_claims.judging import PlanAmount, VerdictMatrix
 from travel_claims.local_models import (
     UNDATED,
     UNDATED_DAYS,
@@ -36,6 +39,19 @@ _BREAKDOWN_COLUMNS = (
     "Steps",
 )
 _DELAY_COLUMN = _BREAKDOWN_COLUMNS.index("Delay period") + 1
+_AMOUNTS = "Amounts"
+_ALIGNMENT = "Alignment table"
+_AMOUNT_COLUMNS = (
+    "Product",
+    "Wording version",
+    "Condition key",
+    "Incident",
+    "Plan",
+    "Benefit amount",
+    "Steps",
+    "Total",
+    "Source",
+)
 _WIDE_COLUMNS = {"Grounds", "As read from the Scenario"}
 
 
@@ -64,8 +80,29 @@ def describe_facts(facts: ScenarioFacts) -> list[tuple[str | None, str]]:
     return lines
 
 
+def describe_amount(paid: PlanAmount, steps: int | None) -> str:
+    """What a paid outcome pays under one Plan, with its source, on one line."""
+    if steps is not None and paid.total is None:
+        noun = "step" if steps == 1 else "steps"
+        paying = (
+            f"{nt_dollars(paid.benefit_amount)} per step, {steps} {noun}; "
+            "no maximum per incident is given, so no total"
+        )
+    elif steps is not None and paid.total is not None:
+        noun = "step" if steps == 1 else "steps"
+        paying = f"{nt_dollars(paid.total)}, {steps} {noun} of {nt_dollars(paid.benefit_amount)}"
+        if paid.total < steps * paid.benefit_amount:
+            paying += " capped at the maximum per incident"
+    elif paid.total is not None:
+        paying = nt_dollars(paid.total)
+    else:
+        paying = f"limit {nt_dollars(paid.benefit_amount)}"
+    return f"{paid.plan}: {paying} (source: {paid.source})"
+
+
 def write_matrix(path: Path, matrix: VerdictMatrix) -> None:
-    """Write the Verdict matrix, the facts read and the per-Condition breakdown.
+    """Write the Verdict matrix, the facts read, the per-Condition breakdown, and the
+    amount per Plan of each paid outcome.
 
     Each Cause-ambiguous outcome is followed by a row for each reading of each
     provision it turns on. An existing file is never overwritten.
@@ -126,6 +163,51 @@ def write_matrix(path: Path, matrix: VerdictMatrix) -> None:
                         ],
                     )
 
+    amounts = book.create_sheet(_AMOUNTS)
+    _heading(amounts, _AMOUNT_COLUMNS)
+    for cell in matrix.cells:
+        for outcome in cell.outcomes:
+            for paid in outcome.amounts:
+                amounts.append(
+                    [
+                        cell.product,
+                        str(cell.wording),
+                        outcome.condition,
+                        outcome.incident,
+                        paid.plan,
+                        paid.benefit_amount,
+                        outcome.steps,
+                        paid.total,
+                        paid.source,
+                    ]
+                )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    book.save(path)
+
+
+def write_alignment(path: Path, table: AlignmentTable) -> None:
+    """Write the Alignment table: a row per row, and for each column its text and what
+    each entry cites, one entry per line. An existing file is never overwritten."""
+    if path.exists():
+        raise FileExistsError(f"{path} already exists; name a new file for the export")
+    book = Workbook()
+    sheet = book.active
+    assert sheet is not None  # a new workbook has one sheet
+    sheet.title = _ALIGNMENT
+    columns = ["Benefit", "Row"]
+    for column in table.columns:
+        columns += [str(column), "Cites"]
+    _heading(sheet, tuple(columns))
+    for row in table.rows:
+        values: list[object] = [str(row.benefit) if row.benefit else "all Benefits", row.label]
+        for cell, shown in zip(row.cells, row.shown(), strict=True):
+            values += [shown, "\n".join(entry.citation() for entry in cell) or None]
+        sheet.append(values)
+        for written in sheet[sheet.max_row]:
+            written.alignment = Alignment(wrap_text=True, vertical="top")
+    for index in range(len(table.columns)):
+        sheet.column_dimensions[get_column_letter(3 + 2 * index)].width = 60
     path.parent.mkdir(parents=True, exist_ok=True)
     book.save(path)
 

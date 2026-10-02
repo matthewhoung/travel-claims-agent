@@ -12,6 +12,8 @@ import openpyxl
 from travel_claims.app import import_product, load_workbook
 from travel_claims.clause_store import ClauseStore
 from travel_claims.conditions import (
+    Amount,
+    Availability,
     Benefit,
     BenefitType,
     ClauseRef,
@@ -23,7 +25,14 @@ from travel_claims.conditions import (
 from travel_claims.loading import ConditionTable
 from travel_claims.policies import Wording
 
-from hsiang_le_you import FIXTURE, confirm, import_draft, review
+from hsiang_le_you import (
+    FIXTURE,
+    cathay_century_flight_delay,
+    confirm,
+    enter_amounts,
+    import_draft,
+    review,
+)
 from scripted_models import ScriptedModels
 
 
@@ -122,7 +131,7 @@ def test_every_problem_in_the_workbook_is_listed_at_once(tmp_path: Path) -> None
             # replacement flight are on rows 2 to 4.
             "Exclusions!C2": None,  # Exclusion type
             "Exclusions!D3": "flight delays",  # Applies to
-            "Exclusions!H4": "第三十九條 五",  # Clause reference
+            "Exclusions!H4": "第九十九條 五",  # Clause reference
             # Amounts: a row for a Condition the workbook does not have.
             "Amounts!A2": "flight delays",
             "Amounts!C2": "not collected",
@@ -141,7 +150,7 @@ def test_every_problem_in_the_workbook_is_listed_at_once(tmp_path: Path) -> None
         ),
         "Exclusions!C2: Exclusion type is missing",
         "Exclusions!D3: unknown Condition key: flight delays",
-        "Exclusions!H4: 第三十九條 is not among the stored Clauses of 享樂遊 (new wording)",
+        "Exclusions!H4: 第九十九條 is not among the stored Clauses of 享樂遊 (new wording)",
         "Amounts!A2: unknown Condition key: flight delays",
     ]
     assert loaded.table is None
@@ -277,17 +286,90 @@ def test_the_old_wording_rule_needs_the_first_replacement_exclusion_and_its_prov
     ]
 
 
-def test_amounts_rows_may_name_a_condition_or_all(tmp_path: Path) -> None:
+def test_rows_not_published_or_not_collected_need_no_plan_amount_or_source(
+    tmp_path: Path,
+) -> None:
     workbook, store = import_draft(tmp_path)
     confirm(workbook)
-    review(
+    enter_amounts(
         workbook,
-        {
-            "Amounts!A2": "flight delay",
-            "Amounts!C2": "not published",
-            "Amounts!A3": "all",
-            "Amounts!C3": "not collected",
-        },
+        [
+            ("flight delay", None, "not published", None, None, None),
+            ("all", None, "not collected", None, None, None),
+        ],
     )
 
-    assert load_workbook(workbook, store=store).problems == ()
+    loaded = load_workbook(workbook, store=store)
+
+    assert loaded.problems == ()
+    assert loaded.table is not None
+    assert loaded.table.amounts == (
+        Amount("flight delay", Availability.NOT_PUBLISHED),
+        Amount("all", Availability.NOT_COLLECTED),
+    )
+
+
+def test_published_amounts_load_with_their_plan_and_source(tmp_path: Path) -> None:
+    workbook, store = import_draft(tmp_path)
+    confirm(workbook)
+    enter_amounts(workbook, cathay_century_flight_delay())
+
+    loaded = load_workbook(workbook, store=store)
+
+    assert loaded.problems == ()
+    assert loaded.table is not None
+    source = "https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/"
+    assert loaded.table.amounts == (
+        Amount("flight delay", Availability.PUBLISHED, "安心型(T5)", 6000, 12000, source),
+        Amount("flight delay", Availability.PUBLISHED, "海外豪華型(U3)", 6000, 12000, source),
+    )
+
+
+def test_an_empty_amounts_sheet_is_accepted(tmp_path: Path) -> None:
+    workbook, store = import_draft(tmp_path)
+    confirm(workbook)
+
+    loaded = load_workbook(workbook, store=store)
+
+    assert loaded.problems == ()
+    assert loaded.table is not None
+    assert loaded.table.amounts == ()
+
+
+def test_every_problem_in_the_amounts_sheet_is_listed(tmp_path: Path) -> None:
+    workbook, store = import_draft(tmp_path)
+    confirm(workbook)
+    enter_amounts(
+        workbook,
+        [
+            # A published amount without a source.
+            ("flight delay", "安心型(T5)", "published", 6000, 12000, None),
+            # A published amount without a Plan or an amount, naming all.
+            ("all", None, "published", None, None, "https://example.com/plans"),
+            # Amounts in whole NT$ only.
+            ("flight delay", "海外豪華型(U3)", "published", 6000.5, "12,000元", "https://x"),
+            # No availability, and none of the three.
+            ("flight delay", "A", None, None, None, None),
+            ("flight delay", "B", "unknown", None, None, None),
+            # The same Plan of a Condition twice.
+            ("flight delay", "安心型(T5)", "not published", None, None, None),
+            # No Condition key.
+            (None, None, "not collected", None, None, None),
+        ],
+    )
+
+    loaded = load_workbook(workbook, store=store)
+
+    assert [str(problem) for problem in loaded.problems] == [
+        "Amounts!F2: a published amount needs its Source",
+        "Amounts!A3: a published amount needs a Condition key, not all",
+        "Amounts!B3: a published amount needs its Plan",
+        "Amounts!D3: a published amount needs its Benefit amount",
+        "Amounts!D4: Benefit amount is not a whole number of NT$: 6000.5",
+        "Amounts!E4: Maximum per incident is not a whole number of NT$: 12,000元",
+        "Amounts!C5: Availability is missing",
+        "Amounts!C6: Availability is not one of: published, not published, not collected",
+        "Amounts!B7: flight delay under 安心型(T5) is also in row 2",
+        "Amounts!A8: Condition key is missing",
+    ]
+    assert loaded.table is None

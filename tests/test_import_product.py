@@ -18,9 +18,11 @@ from travel_claims.local_models import ClauseRole, Extraction
 from travel_claims.policies import Wording
 
 from hsiang_le_you import (
+    BAGGAGE_DELAY,
     FIRST_REPLACEMENT,
     FIXTURE,
     FLIGHT_DELAY,
+    RETURN_HOME,
     TYPHOON,
     WILFUL_ACT,
     confirm,
@@ -169,13 +171,16 @@ def test_condition_keys_are_the_benefit_and_a_label_unique_and_stable(tmp_path: 
         assert [row["Applies to"] for row in table(book["Exclusions"])] == ["; ".join(keys)]
 
 
-def test_the_general_provisions_and_flight_delay_are_extracted_and_every_clause_indexed(
+def test_the_general_provisions_and_the_extracted_benefits_are_extracted_and_every_clause_indexed(
     tmp_path: Path,
 ) -> None:
     models = ScriptedModels()
 
     imported(tmp_path, models)
 
+    # Flight delay is judged; baggage delay, baggage loss and loss of travel
+    # documents are extracted for the Alignment table only. Trip cancellation
+    # (第二十七條) is not extracted yet, nor claim documents or recovery Clauses.
     assert [(r.clause.number, r.role, r.benefit) for r in models.extracted] == [
         (3, ClauseRole.DEFINITIONS, None),
         (4, ClauseRole.GENERAL_EXCLUSIONS, None),
@@ -183,12 +188,47 @@ def test_the_general_provisions_and_flight_delay_are_extracted_and_every_clause_
         (6, ClauseRole.POLICY_PERIOD, None),
         (30, ClauseRole.BENEFIT_COVER, Benefit.FLIGHT_DELAY),
         (31, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.FLIGHT_DELAY),
+        (36, ClauseRole.BENEFIT_COVER, Benefit.BAGGAGE_DELAY),
+        (37, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.BAGGAGE_DELAY),
+        (39, ClauseRole.BENEFIT_COVER, Benefit.BAGGAGE_LOSS),
+        (40, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.BAGGAGE_LOSS),
+        (41, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.BAGGAGE_LOSS),
+        (45, ClauseRole.BENEFIT_COVER, Benefit.TRAVEL_DOCUMENT_LOSS),
+        (46, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.TRAVEL_DOCUMENT_LOSS),
     ]
     # Each with the other Clauses of its chapter as context.
     context = {r.clause.number: [c.number for c in r.context] for r in models.extracted}
     assert context[4] == [1, 3, 5, 6]
-    assert context[30] == [27, 31, 32]
-    assert models.indexed == [("享樂遊", Wording.NEW, (1, 3, 4, 5, 6, 18, 27, 30, 31, 32))]
+    assert context[30] == [27, 31, 32, *range(36, 48)]
+    assert models.indexed == [
+        ("享樂遊", Wording.NEW, (1, 3, 4, 5, 6, 18, 27, 30, 31, 32, *range(36, 48)))
+    ]
+
+
+def test_an_alignment_only_benefits_exclusions_apply_to_its_own_conditions(
+    tmp_path: Path,
+) -> None:
+    models = ScriptedModels(
+        extractions={
+            30: Extraction(conditions=(FLIGHT_DELAY,)),
+            36: Extraction(conditions=(BAGGAGE_DELAY,)),
+            37: Extraction(exclusions=(RETURN_HOME,)),
+        }
+    )
+
+    book = imported(tmp_path, models)
+
+    assert [
+        (row["Condition key"], row["Benefit"], row["Benefit type"], row["Clause reference"])
+        for row in table(book["Conditions"], header_row=4)
+    ] == [
+        ("flight delay", "flight delay", "progressive fixed amount", "第三十條"),
+        ("baggage delay", "baggage delay", "one-off fixed amount", "第三十六條"),
+    ]
+    assert [
+        (row["Exclusion type"], row["Applies to"], row["Clause reference"])
+        for row in table(book["Exclusions"])
+    ] == [("delay on return home", "baggage delay", "第三十七條 二")]
 
 
 def test_conditions_from_a_clause_that_is_not_a_benefits_cover_are_refused(

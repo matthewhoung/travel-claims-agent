@@ -20,6 +20,7 @@ from travel_claims.local_models import (
     Settled,
     TurnsOnCause,
 )
+from travel_claims.policies import Wording
 
 import hsiang_le_you
 from scripted_models import ScriptedModels
@@ -92,8 +93,8 @@ def test_import_writes_a_draft_workbook_and_says_how_to_confirm_it(
     )
 
     assert capsys.readouterr().out == (
-        "Imported 國泰產物享樂遊海外旅行綜合保險 (pages 13–16) as 享樂遊, new wording.\n"
-        "Stored 10 Clauses. Extracted 1 Condition and 3 exclusions into the draft workbook\n"
+        "Imported 國泰產物享樂遊海外旅行綜合保險 (pages 13–17) as 享樂遊, new wording.\n"
+        "Stored 22 Clauses. Extracted 1 Condition and 3 exclusions into the draft workbook\n"
         f"{workbook}\n"
         "Review it in Excel, and record who confirmed it and when above the Conditions table.\n"
         "Then check it with:\n"
@@ -232,6 +233,40 @@ def test_judge_prints_the_facts_read_and_the_verdict_matrix(
     )
 
 
+def test_judge_prints_the_amount_per_plan_of_a_paid_outcome(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+    hsiang_le_you.confirm(workbook)
+    hsiang_le_you.enter_amounts(
+        workbook,
+        [
+            ("flight delay", "A", "published", 6000, 12000, "https://example.com/a"),
+            ("flight delay", "B", "published", 6000, None, "https://example.com/b"),
+            ("flight delay", "C", "not published", None, None, None),
+        ],
+    )
+    models = ScriptedModels(
+        facts=hsiang_le_you.delayed_by(timedelta(hours=12)),
+        judgements=hsiang_le_you.NOTHING_APPLIES,
+    )
+
+    main(
+        ["judge", "--scenario=延誤十二小時。", str(workbook), f"--store={store.directory}"],
+        models=models,
+    )
+
+    out = capsys.readouterr().out
+    assert out.endswith(
+        "  flight delay, incident 1: paid (第三十條)\n"
+        "    a delay of 12 h 0 min: 3 full steps of 4 hours\n"
+        "    A: NT$12,000, 3 steps of NT$6,000 capped at the maximum per incident"
+        " (source: https://example.com/a)\n"
+        "    B: NT$6,000 per step, 3 steps; no maximum per incident is given, so no total"
+        " (source: https://example.com/b)\n"
+    )
+
+
 def test_judge_prints_each_reading_of_a_cause_ambiguous_outcome_and_exports_the_matrix(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -270,7 +305,12 @@ def test_judge_prints_each_reading_of_a_cause_ambiguous_outcome_and_exports_the_
         "\n"
         f"Exported the Verdict matrix to {exported}\n"
     )
-    assert openpyxl.load_workbook(exported).sheetnames == ["Verdict matrix", "Facts", "Breakdown"]
+    assert openpyxl.load_workbook(exported).sheetnames == [
+        "Verdict matrix",
+        "Facts",
+        "Breakdown",
+        "Amounts",
+    ]
 
 
 def test_judge_refuses_to_export_over_an_existing_file_before_judging(
@@ -410,3 +450,81 @@ def test_judge_prints_times_given_without_a_date_as_times_of_day(
         "    replacement departing 01:00 the next day (no date stated), arranged by the airline"
         in facts_read
     )
+
+
+def test_align_prints_the_alignment_table_and_exports_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old, store = hsiang_le_you.import_draft(tmp_path, wording=Wording.OLD)
+    new, _ = hsiang_le_you.import_draft(tmp_path)
+    hsiang_le_you.confirm(old)
+    hsiang_le_you.confirm(new)
+    hsiang_le_you.enter_amounts(new, hsiang_le_you.cathay_century_flight_delay())
+    exported = tmp_path / "alignment.xlsx"
+
+    main(["align", str(new), str(old), f"--store={store.directory}", f"--export={exported}"])
+
+    out = capsys.readouterr().out
+    assert out.startswith(
+        "Columns: 享樂遊 (old wording), 享樂遊 (new wording)\n"
+        "\n"
+        "flight delay\n"
+        "  Covered event\n"
+        "    享樂遊 (old wording): scheduled flight departs 4 hours or more late (第三十條)\n"
+        "    享樂遊 (new wording): scheduled flight departs 4 hours or more late (第三十條)\n"
+    )
+    assert (
+        "  Benefit amount\n"
+        "    享樂遊 (old wording): not available: not collected (第三十條)\n"
+        "    享樂遊 (new wording): 安心型(T5): NT$6,000 per step, at most NT$12,000 per incident"
+        " (第三十條; source: https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/)\n"
+    ) in out
+    assert (
+        "  typhoon warning at purchase\n"
+        "    享樂遊 (old wording): absent\n"
+        "    享樂遊 (new wording): 要保人向本公司申請訂立保險契約時，中華民國政府氣象機構"
+        "已發布海上颱風警報。 (第三十一條 二)\n"
+    ) in out
+    # An "other" exclusion's row shows only the column it is in.
+    assert out.endswith(
+        "all Benefits\n"
+        "  other\n"
+        "    享樂遊 (old wording): 被保險人故意行為。 (第四條 二)\n"
+        "  other\n"
+        "    享樂遊 (new wording): 被保險人故意行為。 (第四條 二)\n"
+        "\n"
+        f"Exported the Alignment table to {exported}\n"
+    )
+    assert openpyxl.load_workbook(exported).sheetnames == ["Alignment table"]
+
+
+def test_align_refuses_a_workbook_with_problems_and_lists_them(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+    exported = tmp_path / "alignment.xlsx"
+
+    with pytest.raises(SystemExit) as exit:
+        main(["align", str(workbook), f"--store={store.directory}", f"--export={exported}"])
+
+    assert exit.value.code == 1
+    assert capsys.readouterr().out == (
+        "No Alignment table built: fix these problems first.\n"
+        f"{workbook}: 2 problems\n"
+        "Conditions!B1: Confirmed by is missing\n"
+        "Conditions!B2: Confirmed on is missing\n"
+    )
+    assert not exported.exists()
+
+
+def test_align_refuses_to_export_over_an_existing_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+    hsiang_le_you.confirm(workbook)
+
+    with pytest.raises(SystemExit) as exit:
+        main(["align", str(workbook), f"--store={store.directory}", f"--export={workbook}"])
+
+    assert exit.value.code == 2
+    assert f"{workbook} already exists" in capsys.readouterr().err

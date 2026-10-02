@@ -18,7 +18,7 @@ The actuary's working documents are unpublished drafts. They cannot go to a clou
 
 ## What it produces
 
-Both examples below were written by hand from the collected documents to show the intended output. The system produces the Verdict matrix, for flight delay in both wordings; the Alignment table is not built yet.
+Both examples below were written by hand from the collected documents to show the intended output. The system produces the Verdict matrix, for flight delay in both wordings, and the Alignment table, for flight delay, baggage delay, baggage loss and loss of travel documents (see [Comparing Products](#comparing-products-the-alignment-table)).
 
 ### 1. Alignment table
 
@@ -307,9 +307,9 @@ uv run travel-claims import data/clauses/cathay/travel-bundle.new-wording.pdf \
   --policy 6 --product 享樂遊 --wording new
 ```
 
-The local models extract the flight-delay Conditions and exclusions, and the general provisions, into a draft workbook, `workbooks/享樂遊.new.xlsx`. Import never overwrites a workbook. All of the policy's Clauses go to the Clause store in `store/`, which later steps cite and judge from. `import` and `judge` reach the models through the router started by `scripts/serve_models.sh`, so start it first; `LLM_MODEL` in `.env` picks the model, `qwen3.5-9b` or `qwen3.5-4b`.
+The local models extract the Conditions and exclusions of flight delay, baggage delay, baggage loss and loss of travel documents, and the general provisions, into a draft workbook, `workbooks/享樂遊.new.xlsx`. Import never overwrites a workbook. All of the policy's Clauses go to the Clause store in `store/`, which later steps cite and judge from. `import` and `judge` reach the models through the router started by `scripts/serve_models.sh`, so start it first; `LLM_MODEL` in `.env` picks the model, `qwen3.5-9b` or `qwen3.5-4b`.
 
-A reviewer checks the workbook in Excel, corrects it, and records who confirmed it and when above the Conditions table. Load then lists every problem at once, such as a missing field, a Clause reference that is not among the stored Clauses, an exclusion that applies to an unknown Condition key, or a missing confirmation record. It also counts how many extracted fields the reviewer changed:
+A reviewer checks the workbook in Excel, corrects it, and records who confirmed it and when above the Conditions table. On the Amounts sheet a person enters each Condition's Benefit amount per Plan, in whole NT$ (per step for a progressive benefit, the limit for a reimbursement), with its maximum per incident and its source, marking each row published, not published or not collected. A row that is not published or not collected may leave the Plan, the amounts and the source empty, and may name `all` for every Condition; a Condition with no row counts as not collected, and an empty Amounts sheet is accepted. Load then lists every problem at once, including a published amount without its source, Plan or amount, such as a missing field, a Clause reference that is not among the stored Clauses, an exclusion that applies to an unknown Condition key, or a missing confirmation record. It also counts how many extracted fields the reviewer changed:
 
 ```bash
 uv run travel-claims load workbooks/享樂遊.new.xlsx
@@ -345,7 +345,11 @@ Facts read from the Scenario:
 享樂遊, new wording: paid
   flight delay, incident 1: paid (第三十條)
     a delay of 18 h 0 min: 4 full steps of 4 hours
+    安心型(T5): NT$12,000, 4 steps of NT$6,000 capped at the maximum per incident (source: https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/)
+    海外豪華型(U3): NT$12,000, 4 steps of NT$6,000 capped at the maximum per incident (source: https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/)
 ```
+
+A paid outcome shows what each Plan pays where its amount is published: the steps times the amount per step, capped at the maximum per incident, or, with no maximum given, the amount per step and the step count and no total. Verdicts never depend on amounts.
 
 Every workbook is validated as Load does first, and nothing is judged while any has a problem. Code measures the delay period from the stated times by the Wording version's rule and checks the threshold and the policy period; the local models judge the covered event, its requirements, each exclusion and its proviso, one provision at a time. Code derives every outcome from those judgements.
 
@@ -361,7 +365,7 @@ When the outcome cannot be decided, the cell says why: the Scenario lacks a fact
       the exclusion applies: 被保險人未搭乘航空業者所提供之第一班替代交通工具。
 ```
 
-`--export verdicts.xlsx` also writes the Verdict matrix, the facts read and the per-Condition breakdown, with a row per reading, to a new Excel file. Flight delay is judged so far, in both wordings.
+`--export verdicts.xlsx` also writes the Verdict matrix, the facts read, the per-Condition breakdown, with a row per reading, and the amount per Plan of each paid outcome to a new Excel file. Flight delay is judged so far, in both wordings.
 
 ### Old and new wording side by side
 
@@ -396,6 +400,36 @@ The old wording measures a flight delay differently: when force majeure (不可�
 ```
 
 A threshold not met, or an exclusion that applies, decides the outcome only when it holds under every reading. Load requires an old-wording Condition to have a first-replacement exclusion with its proviso, since the delay-period rule takes its readings from it.
+
+### Comparing Products: the Alignment table
+
+Give `align` the confirmed workbooks to line up, one column per Product and Wording version:
+
+```bash
+uv run travel-claims align workbooks/享樂遊.old.xlsx workbooks/享樂遊.new.xlsx --export alignment.xlsx
+```
+
+```
+Columns: 享樂遊 (old wording), 享樂遊 (new wording)
+
+flight delay
+  Covered event
+    享樂遊 (old wording): scheduled flight departs 4 hours or more late (第三十條)
+    享樂遊 (new wording): scheduled flight departs 4 hours or more late (第三十條)
+  ...
+  Benefit amount
+    享樂遊 (old wording): not available: not collected (第三十條)
+    享樂遊 (new wording): 安心型(T5): NT$6,000 per step, at most NT$12,000 per incident (第三十條; source: https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/)
+  typhoon warning at purchase
+    享樂遊 (old wording): absent
+    享樂遊 (new wording): 要保人向本公司申請訂立保險契約時，中華民國政府氣象機構已發布海上颱風警報。 (第三十一條 二)
+  strike at purchase
+    享樂遊 (old wording): 要保人或被保險人向本公司申請訂立保險契約時，已宣布或已發生罷工或工運活動。 (第三十一條 二)
+    享樂遊 (new wording): 要保人向本公司申請訂立保險契約時，公共交通工具業者之受僱人或機場之地勤、運務人員已取得罷工權、…… (第三十一條 三)
+  ...
+```
+
+Rows are grouped by Benefit. Condition parameters line up by parameter, and exclusions by exclusion type: a type a column lacks is shown as absent, and a changed exclusion shows both texts on one row. Each "other" exclusion gets a row of its own, and the general exclusions, which apply to every Benefit, come last. Every cell cites its Clause, and a published amount also gives its source. A missing amount is shown as not available with its reason, and is never borrowed from another Wording version. Code builds the table with no model involved, so the same workbooks always give the same table; nothing is built while any workbook has a problem. Baggage delay, baggage loss and loss of travel documents appear here only; they are not judged.
 
 ### Running 享樂遊 end to end on the real model
 

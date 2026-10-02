@@ -4,11 +4,17 @@ import argparse
 import re
 import sys
 from collections.abc import Callable, Sequence
+from itertools import groupby
 from pathlib import Path
 
+from travel_claims.alignment import AlignmentTable
 from travel_claims.app import (
+    CannotAlign,
     CannotImport,
     CannotJudge,
+    Refused,
+    build_alignment_table,
+    export_alignment_table,
     export_verdict_matrix,
     import_product,
     judge_scenario,
@@ -21,7 +27,7 @@ from travel_claims.judging import OutOfContract, Reason, Verdict, VerdictMatrix
 from travel_claims.llama_server import MalformedAnswer, configured_models
 from travel_claims.local_models import LocalModels
 from travel_claims.policies import Policy, Wording
-from travel_claims.report import describe_facts
+from travel_claims.report import describe_amount, describe_facts
 
 # The Clause store lives here unless --store says otherwise. Workbooks go to
 # _WORKBOOKS. Both are git-ignored: they hold the customer's text.
@@ -72,6 +78,20 @@ def main(argv: Sequence[str] | None = None, models: LocalModels | None = None) -
     loading.add_argument("workbook", type=_file)
     loading.add_argument("--store", type=Path, default=_STORE, help="the Clause store")
 
+    aligning = commands.add_parser(
+        "align",
+        help="line up the same benefit across confirmed workbooks",
+        description="Build the Alignment table from confirmed workbooks: each Benefit's "
+        "parameters, Benefit amounts per Plan and exclusions, one column per Product and "
+        "Wording version, each cell citing its Clause. Nothing is built while any workbook "
+        "has a problem; the command then exits with status 1.",
+    )
+    aligning.add_argument("workbooks", nargs="+", type=_file, metavar="workbook")
+    aligning.add_argument("--store", type=Path, default=_STORE, help="the Clause store")
+    aligning.add_argument(
+        "--export", type=Path, help="also write the Alignment table to this new Excel file"
+    )
+
     judging = commands.add_parser(
         "judge",
         help="judge a Scenario against confirmed workbooks",
@@ -93,11 +113,19 @@ def main(argv: Sequence[str] | None = None, models: LocalModels | None = None) -
     elif args.command == "import":
         _with_models(lambda: _import(args, models or configured_models(), parser))
     elif args.command == "judge":
-        if args.export is not None and args.export.exists():
-            parser.error(f"{args.export} already exists; name a new file for the export")
+        _new_export(args, parser)
         _with_models(lambda: _judge(args, models or configured_models()))
+    elif args.command == "align":
+        _new_export(args, parser)
+        _align(args)
     else:
         _load(args)
+
+
+def _new_export(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Stop before any work if the export would overwrite a file."""
+    if args.export is not None and args.export.exists():
+        parser.error(f"{args.export} already exists; name a new file for the export")
 
 
 def _with_models(command: Callable[[], None]) -> None:
@@ -177,12 +205,7 @@ def _judge(args: argparse.Namespace, models: LocalModels) -> None:
             args.scenario, args.workbooks, store=ClauseStore(args.store), models=models
         )
     except CannotJudge as refused:
-        print("Nothing judged: fix these problems first.")
-        for workbook, problems in refused.problems.items():
-            print(f"{workbook}: {_count(len(problems), 'problem')}")
-            for problem in problems:
-                print(problem)
-        sys.exit(1)
+        _refuse("Nothing judged", refused)
     except OutOfContract as error:
         print(f"Nothing judged: {error}")
         sys.exit(1)
@@ -191,6 +214,42 @@ def _judge(args: argparse.Namespace, models: LocalModels) -> None:
         export_verdict_matrix(matrix, args.export)
         print()
         print(f"Exported the Verdict matrix to {args.export}")
+
+
+def _refuse(what: str, refused: Refused) -> None:
+    print(f"{what}: fix these problems first.")
+    for workbook, problems in refused.problems.items():
+        print(f"{workbook}: {_count(len(problems), 'problem')}")
+        for problem in problems:
+            print(problem)
+    sys.exit(1)
+
+
+def _align(args: argparse.Namespace) -> None:
+    try:
+        table = build_alignment_table(args.workbooks, store=ClauseStore(args.store))
+    except CannotAlign as refused:
+        _refuse("No Alignment table built", refused)
+    _print_alignment(table)
+    if args.export is not None:
+        export_alignment_table(table, args.export)
+        print()
+        print(f"Exported the Alignment table to {args.export}")
+
+
+def _print_alignment(table: AlignmentTable) -> None:
+    """Row by row, grouped by Benefit, each column's entries with what they cite."""
+    print(f"Columns: {', '.join(str(column) for column in table.columns)}")
+    for benefit, rows in groupby(table.rows, key=lambda row: row.benefit):
+        print()
+        print(benefit or "all Benefits")
+        for row in rows:
+            print(f"  {row.label}")
+            for column, cell, shown in zip(table.columns, row.cells, row.shown(), strict=True):
+                if not cell and shown is not None:
+                    print(f"    {column}: {shown}")
+                for entry in cell:
+                    print(f"    {column}: {entry.text} ({entry.citation()})")
 
 
 def _print_matrix(matrix: VerdictMatrix) -> None:
@@ -206,6 +265,8 @@ def _print_matrix(matrix: VerdictMatrix) -> None:
                 f"{_verdict(outcome.verdict, outcome.reason)} ({outcome.clause})"
             )
             print(f"    {outcome.grounds}")
+            for paid in outcome.amounts:
+                print(f"    {describe_amount(paid, outcome.steps)}")
             for provision in outcome.turns_on:
                 for reading in provision.readings:
                     print(

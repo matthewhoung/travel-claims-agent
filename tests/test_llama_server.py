@@ -15,7 +15,13 @@ from typing import Any
 
 import pytest
 
-from travel_claims.conditions import Benefit, BenefitType, ClauseRef
+from travel_claims.conditions import (
+    EXCLUSION_TYPES,
+    Benefit,
+    BenefitType,
+    ClauseRef,
+    ExclusionType,
+)
 from travel_claims.llama_server import LlamaServerModels, MalformedAnswer
 from travel_claims.local_models import (
     ArrangedBy,
@@ -194,6 +200,43 @@ def test_a_cover_clause_is_read_into_conditions_with_the_benefits_own_lists(
     # The Clause and the rest of its chapter are in the prompt.
     assert COVER.text in stand_in.prompt()
     assert "第三十一條" in stand_in.prompt()
+
+
+def test_an_exclusions_clause_is_offered_its_benefits_own_exclusion_types(
+    stand_in: StandIn,
+) -> None:
+    baggage_loss = Clause(
+        number=41,
+        heading="行李損失保險(定額給付)特別不保事項",
+        chapter="第三章 個人海外旅行不便保險",
+        text="對於下列事項或該事項所致之損失，本公司不負理賠責任：\n"
+        "八、非因竊盜、強盜與搶奪之不明原因遺失。",
+        pages=(17, 17),
+    )
+    stand_in.answers.append(
+        {
+            "exclusions": [
+                {
+                    "type": "unexplained loss",
+                    "text": "非因竊盜、強盜與搶奪之不明原因遺失。",
+                    "proviso": None,
+                    "concerns_cause": True,
+                    "item": "八",
+                }
+            ]
+        }
+    )
+
+    extraction = models_for(stand_in).extract(
+        ExtractionRequest(baggage_loss, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.BAGGAGE_LOSS, ())
+    )
+
+    assert extraction.exclusions[0].type is ExclusionType.UNEXPLAINED_LOSS
+    exclusion = stand_in.schema()["properties"]["exclusions"]["items"]["properties"]
+    offered = [*EXCLUSION_TYPES[Benefit.BAGGAGE_LOSS], ExclusionType.OTHER]
+    assert exclusion["type"]["enum"] == offered
+    # Each described in the prompt.
+    assert "  - unexplained loss: 非因竊盜、強盜與搶奪之不明原因遺失" in stand_in.prompt()
 
 
 def moment(time: str | None, date: str | None = None, day: int = 0) -> dict[str, Any]:

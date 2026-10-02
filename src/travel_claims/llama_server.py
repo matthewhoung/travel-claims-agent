@@ -276,6 +276,43 @@ _TYPE_DESCRIPTIONS = {
     ExclusionType.FIRST_REPLACEMENT_NOT_TAKEN: "被保險人未搭乘航空業者所提供之第一班替代交通工具",
     ExclusionType.SELF_ARRANGED_ELSEWHERE: "被保險人自行安排替代班機之目的地與原班機不同",
     ExclusionType.AIRLINE_INSOLVENCY: "航空業者破產、清算或債務不履行",
+    ExclusionType.RETURN_TO_TAIWAN_AIRPORT: "被保險人於返回中華民國境內機場之行李延誤",
+    ExclusionType.RETURN_HOME: "被保險人於返回出發地或居住所之行李延誤",
+    ExclusionType.SENT_SEPARATELY: "被保險人事先運送之行李，或非隨身託運而分開郵寄或運送之物品",
+    ExclusionType.BUSINESS_GOODS_AND_VALUABLES: (
+        "商業用或營業用物品、食物、動植物、機動車、船舶、其他交通工具、家具、古董、珠寶、"
+        "行動電話、飾品"
+    ),
+    ExclusionType.MONEY_AND_DOCUMENTS: (
+        "貨幣、股票、債券、郵票、票據、入場券、車票、機票、船票、其他交通工具票證、"
+        "有價證券及旅行文件"
+    ),
+    ExclusionType.MANUSCRIPTS_AND_SAMPLES: "文稿、圖畫、圖案、模型、樣品、帳簿或其他商業憑證簿冊",
+    ExclusionType.CONTRABAND: "違禁品或非法之物品",
+    ExclusionType.CONTAINERS: "行李箱、手提箱或類似容器本身",
+    ExclusionType.RENTED_EQUIPMENT: "被保險人所租用之設備",
+    ExclusionType.STORED_DATA: "儲存或記載於磁帶、磁碟、磁片、卡片或其他資料儲存用物品上之資料",
+    ExclusionType.FRAGILE_ITEMS: "玻璃、瓷器、陶器或其他易碎物品",
+    ExclusionType.PAYMENT_CARDS: "信用卡、金融卡或其他作為簽帳或提款之塑膠卡片",
+    ExclusionType.WEAR_AND_DEFECTS: (
+        "物品因生銹、發霉、變色、自然形成或正常使用之耗損、蟲鼠破壞或固有瑕疵"
+    ),
+    ExclusionType.REPAIR_OR_CLEANING: "被保險人自行或使人修理、清潔、變更物品",
+    ExclusionType.RIOT_OR_REVOLUTION: (
+        "直接或間接因暴動、叛亂、革命或政府對前述事件所採取之阻礙、反抗或防禦行為"
+    ),
+    ExclusionType.CARRIER_OR_HOTEL_COMPENSATES: "可由公共交通工具業者或旅館業者補償者",
+    ExclusionType.APPEARANCE_ONLY: (
+        "物品因擦撞、表面塗料剝落或單純之外觀受損而不影響物品原有之功能"
+    ),
+    ExclusionType.LIQUID_LEAKAGE: "保險標的物內裝液體之流失",
+    ExclusionType.CARRIER_NOT_NOTIFIED: (
+        "損失發生後，被保險人未儘速通知公共交通工具業者，並未向其索取書面事故及損失證明"
+    ),
+    ExclusionType.UNEXPLAINED_LOSS: "非因竊盜、強盜與搶奪之不明原因遺失",
+    ExclusionType.NOT_REPORTED_TO_POLICE: (
+        "被保險人未於保險事故發生後二十四小時內向警方報案並取得報案證明"
+    ),
     ExclusionType.OTHER: "any other exclusion",
 }
 

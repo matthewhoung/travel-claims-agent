@@ -14,7 +14,10 @@ from hsiang_le_you import (
     NOTHING_APPLIES,
     PROVISO,
     ROAD_CLOSURE,
+    cathay_century_flight_delay,
     confirm,
+    delayed_by,
+    enter_amounts,
     import_draft,
     road_closure,
 )
@@ -114,6 +117,34 @@ def test_the_verdict_matrix_exports_with_its_facts_and_breakdown(tmp_path: Path)
             timedelta(hours=5),
             None,
         ),
+    ]
+
+
+def test_the_export_carries_the_amount_per_plan_of_each_paid_outcome(tmp_path: Path) -> None:
+    workbook, store = import_draft(tmp_path)
+    confirm(workbook)
+    enter_amounts(workbook, cathay_century_flight_delay())
+    models = ScriptedModels(facts=delayed_by(timedelta(hours=12)), judgements=NOTHING_APPLIES)
+    matrix = judge_scenario("班機延誤十二小時。", [workbook], store=store, models=models)
+    exported = tmp_path / "verdicts.xlsx"
+
+    export_verdict_matrix(matrix, exported)
+
+    source = "https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/"
+    assert rows(exported, "Amounts") == [
+        (
+            "Product",
+            "Wording version",
+            "Condition key",
+            "Incident",
+            "Plan",
+            "Benefit amount",
+            "Steps",
+            "Total",
+            "Source",
+        ),
+        ("享樂遊", "new", "flight delay", 1, "安心型(T5)", 6000, 3, 12000, source),
+        ("享樂遊", "new", "flight delay", 1, "海外豪華型(U3)", 6000, 3, 12000, source),
     ]
 
 

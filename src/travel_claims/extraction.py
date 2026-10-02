@@ -27,8 +27,15 @@ from travel_claims.local_models import (
 )
 from travel_claims.policies import Clause, Wording
 
-# The other Benefits are extracted once they are judged or aligned.
-_EXTRACTED_BENEFITS = (Benefit.FLIGHT_DELAY,)
+# Flight delay is judged. Baggage delay, baggage loss and loss of travel
+# documents are extracted for the Alignment table only. The other Benefits are
+# extracted once they are judged.
+_EXTRACTED_BENEFITS = (
+    Benefit.FLIGHT_DELAY,
+    Benefit.BAGGAGE_DELAY,
+    Benefit.BAGGAGE_LOSS,
+    Benefit.TRAVEL_DOCUMENT_LOSS,
+)
 
 
 @dataclass(frozen=True)

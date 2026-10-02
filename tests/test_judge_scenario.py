@@ -18,6 +18,7 @@ from travel_claims.judging import (
     Cell,
     ConditionOutcome,
     OutOfContract,
+    PlanAmount,
     ReadingOutcome,
     Reason,
     TurningProvision,
@@ -48,8 +49,12 @@ from hsiang_le_you import (
     POLICY_PERIOD,
     PROVISO,
     ROAD_CLOSURE,
+    SCHEDULED,
     TAIPEI,
+    cathay_century_flight_delay,
     confirm,
+    delayed_by,
+    enter_amounts,
     import_draft,
     review,
     road_closure,
@@ -57,26 +62,6 @@ from hsiang_le_you import (
 from scripted_models import ScriptedModels
 
 SCENARIO = "我七月十日從桃園搭長榮班機去東京，班機延誤。"
-SCHEDULED = datetime(2026, 7, 10, 8, 0, tzinfo=TAIPEI)
-
-
-def delayed_by(delay: timedelta) -> ScenarioFacts:
-    """The outbound flight from 桃園 departs `delay` late, within the policy period."""
-    return ScenarioFacts(
-        benefits=(Benefit.FLIGHT_DELAY,),
-        incidents=(
-            Incident(
-                leg=Leg.OUTBOUND,
-                airport="桃園國際機場",
-                transport="flight",
-                scheduled_departure=SCHEDULED,
-                actual_departure=SCHEDULED + delay,
-            ),
-        ),
-        cause="機械故障",
-        purchased_at=datetime(2026, 7, 1, 12, 0, tzinfo=TAIPEI),
-        policy_period=POLICY_PERIOD,
-    )
 
 
 def test_a_delay_of_exactly_four_hours_is_paid_with_one_step(tmp_path: Path) -> None:
@@ -158,6 +143,73 @@ def test_a_one_off_benefit_pays_once_however_long_the_delay(tmp_path: Path) -> N
             clause=ClauseRef(30),
             delay=timedelta(hours=8),
         ),
+    )
+
+
+CATHAY_SOURCE = "https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/"
+
+
+def test_a_paid_outcome_shows_the_amount_per_plan_capped_at_the_maximum_per_incident(
+    tmp_path: Path,
+) -> None:
+    workbook, store = import_draft(tmp_path)
+    confirm(workbook)
+    models = ScriptedModels(facts=delayed_by(timedelta(hours=12)), judgements=NOTHING_APPLIES)
+    without_amounts = judge_scenario(SCENARIO, [workbook], store=store, models=models)
+    # NT$6,000 per step, at most NT$12,000 per incident, for each Plan.
+    enter_amounts(workbook, cathay_century_flight_delay())
+
+    matrix = judge_scenario(SCENARIO, [workbook], store=store, models=models)
+
+    outcome = matrix.cells[0].outcomes[0]
+    assert outcome.steps == 3
+    # Three steps of NT$6,000 capped at the maximum.
+    assert outcome.amounts == (
+        PlanAmount("安心型(T5)", 6000, 12000, CATHAY_SOURCE),
+        PlanAmount("海外豪華型(U3)", 6000, 12000, CATHAY_SOURCE),
+    )
+    # Verdicts never depend on amounts.
+    assert replace(outcome, amounts=()) == without_amounts.cells[0].outcomes[0]
+    assert matrix.cells[0].verdict is without_amounts.cells[0].verdict
+
+
+def test_without_a_maximum_per_incident_a_paid_outcome_shows_the_amount_per_step_and_no_total(
+    tmp_path: Path,
+) -> None:
+    workbook, store = import_draft(tmp_path)
+    confirm(workbook)
+    enter_amounts(workbook, cathay_century_flight_delay(maximum=False))
+    models = ScriptedModels(facts=delayed_by(timedelta(hours=12)), judgements=NOTHING_APPLIES)
+
+    matrix = judge_scenario(SCENARIO, [workbook], store=store, models=models)
+
+    outcome = matrix.cells[0].outcomes[0]
+    assert outcome.steps == 3
+    assert outcome.amounts == (
+        PlanAmount("安心型(T5)", 6000, None, CATHAY_SOURCE),
+        PlanAmount("海外豪華型(U3)", 6000, None, CATHAY_SOURCE),
+    )
+
+
+def test_a_paid_one_off_outcome_pays_the_amount_once_and_shows_only_known_amounts(
+    tmp_path: Path,
+) -> None:
+    workbook, store = import_draft(tmp_path)
+    review(workbook, {"Conditions!J5": "one-off fixed amount", "Conditions!K5": None})
+    confirm(workbook)
+    enter_amounts(
+        workbook,
+        [
+            ("flight delay", "經濟型", "published", 3000, None, "https://example.com/plans"),
+            ("flight delay", "團體型", "not published", None, None, None),
+        ],
+    )
+    models = ScriptedModels(facts=delayed_by(timedelta(hours=8)), judgements=NOTHING_APPLIES)
+
+    matrix = judge_scenario(SCENARIO, [workbook], store=store, models=models)
+
+    assert matrix.cells[0].outcomes[0].amounts == (
+        PlanAmount("經濟型", 3000, 3000, "https://example.com/plans"),
     )
 
 

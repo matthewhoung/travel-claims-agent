@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from os import PathLike
 from pathlib import Path
 
+from travel_claims.alignment import AlignmentTable, align
 from travel_claims.clause_store import ClauseStore
 from travel_claims.extraction import draft_table
 from travel_claims.judging import VerdictMatrix, judge
@@ -12,7 +13,7 @@ from travel_claims.loading import ConditionTable, Loaded, Problem, load
 from travel_claims.local_models import LocalModels
 from travel_claims.pdf import read_pages
 from travel_claims.policies import Policy, Wording
-from travel_claims.report import write_matrix
+from travel_claims.report import write_alignment, write_matrix
 from travel_claims.splitter import split_policies
 from travel_claims.workbook import write_draft
 
@@ -21,8 +22,8 @@ class CannotImport(Exception):
     """The document, the choice of policy or the workbook named does not allow an import."""
 
 
-class CannotJudge(Exception):
-    """A workbook given has problems, so no Verdict is given from it (ADR 0001)."""
+class Refused(Exception):
+    """A workbook given has problems, so nothing is answered from it (ADR 0001)."""
 
     def __init__(self, problems: dict[Path, tuple[Problem, ...]]) -> None:
         self.problems = problems
@@ -31,6 +32,14 @@ class CannotJudge(Exception):
             f"{count} problem{'' if count == 1 else 's'} in "
             + ", ".join(str(path) for path in problems)
         )
+
+
+class CannotJudge(Refused):
+    """A workbook given has problems, so no Verdict is given from it."""
+
+
+class CannotAlign(Refused):
+    """A workbook given has problems, so no Alignment table is built from it."""
 
 
 @dataclass(frozen=True)
@@ -88,6 +97,29 @@ def load_workbook(workbook: str | PathLike[str], *, store: ClauseStore) -> Loade
     return load(Path(workbook), store)
 
 
+def build_alignment_table(
+    workbooks: Sequence[str | PathLike[str]], *, store: ClauseStore
+) -> AlignmentTable:
+    """Line up the same benefit across the confirmed workbooks, with Benefit amounts per Plan.
+
+    Every workbook is validated as Load does first; if any has a problem, no
+    table is built. No model is involved, so the same workbooks always give
+    the same table.
+    """
+    tables, problems = _confirmed(workbooks, store)
+    if problems:
+        raise CannotAlign(problems)
+    return align(tables)
+
+
+def export_alignment_table(table: AlignmentTable, path: str | PathLike[str]) -> None:
+    """Export an Alignment table to Excel, with what each cell cites.
+
+    An existing file is never overwritten.
+    """
+    write_alignment(Path(path), table)
+
+
 def judge_scenario(
     scenario: str,
     workbooks: Sequence[str | PathLike[str]],
@@ -100,14 +132,7 @@ def judge_scenario(
     Every workbook is validated as Load does first; if any has a problem,
     nothing is judged. Clause text comes from the Clause store.
     """
-    tables: list[ConditionTable] = []
-    problems: dict[Path, tuple[Problem, ...]] = {}
-    for workbook in workbooks:
-        loaded = load(Path(workbook), store)
-        if loaded.table is None:
-            problems[Path(workbook)] = loaded.problems
-        else:
-            tables.append(loaded.table)
+    tables, problems = _confirmed(workbooks, store)
     if problems:
         raise CannotJudge(problems)
     return judge(scenario, tables, store, models)
@@ -119,6 +144,21 @@ def export_verdict_matrix(matrix: VerdictMatrix, path: str | PathLike[str]) -> N
     An existing file is never overwritten.
     """
     write_matrix(Path(path), matrix)
+
+
+def _confirmed(
+    workbooks: Sequence[str | PathLike[str]], store: ClauseStore
+) -> tuple[list[ConditionTable], dict[Path, tuple[Problem, ...]]]:
+    """Load each workbook: the condition tables, and the problems of each that has any."""
+    tables: list[ConditionTable] = []
+    problems: dict[Path, tuple[Problem, ...]] = {}
+    for workbook in workbooks:
+        loaded = load(Path(workbook), store)
+        if loaded.table is None:
+            problems[Path(workbook)] = loaded.problems
+        else:
+            tables.append(loaded.table)
+    return tables, problems
 
 
 def _choose(pages: list[str], number: int | None, page_range: tuple[int, int] | None) -> Policy:
