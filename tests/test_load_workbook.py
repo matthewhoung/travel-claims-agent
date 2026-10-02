@@ -27,6 +27,7 @@ from travel_claims.policies import Wording
 
 from hsiang_le_you import (
     FIXTURE,
+    TRIP_EXTRACTIONS,
     cathay_century_flight_delay,
     confirm,
     enter_amounts,
@@ -69,6 +70,7 @@ def test_a_confirmed_workbook_loads_as_the_condition_table(tmp_path: Path) -> No
                 covered_event="scheduled flight departs 4 hours or more late",
                 coverage_requirements=("scheduled flight", "as a passenger"),
                 coverage_window="the dates and times on the policy schedule",
+                window_days=None,
                 threshold_hours=4,
                 delay_period_rule=DelayPeriodRule.NEW,
                 benefit_type=BenefitType.PROGRESSIVE,
@@ -116,7 +118,7 @@ def test_a_confirmed_workbook_loads_as_the_condition_table(tmp_path: Path) -> No
     )
     # 14 fields of the Condition and 6 of each exclusion; Product and Wording
     # version were chosen at import, not extracted.
-    assert (loaded.extracted_fields, loaded.changed_fields) == (32, 0)
+    assert (loaded.extracted_fields, loaded.changed_fields) == (33, 0)
 
 
 def test_every_problem_in_the_workbook_is_listed_at_once(tmp_path: Path) -> None:
@@ -125,8 +127,8 @@ def test_every_problem_in_the_workbook_is_listed_at_once(tmp_path: Path) -> None
         workbook,
         {
             # Conditions: the flight-delay Condition is on row 5.
-            "Conditions!H5": None,  # Threshold (hours)
-            "Conditions!J5": "progresive",  # Benefit type
+            "Conditions!I5": None,  # Threshold (hours)
+            "Conditions!K5": "progresive",  # Benefit type
             # Exclusions: the wilful act, the typhoon warning and the first
             # replacement flight are on rows 2 to 4.
             "Exclusions!C2": None,  # Exclusion type
@@ -143,9 +145,9 @@ def test_every_problem_in_the_workbook_is_listed_at_once(tmp_path: Path) -> None
     assert [str(problem) for problem in loaded.problems] == [
         "Conditions!B1: Confirmed by is missing",
         "Conditions!B2: Confirmed on is missing",
-        "Conditions!H5: Threshold (hours) is missing",
+        "Conditions!I5: Threshold (hours) is missing",
         (
-            "Conditions!J5: Benefit type is not one of: "
+            "Conditions!K5: Benefit type is not one of: "
             "progressive fixed amount, one-off fixed amount, reimbursement"
         ),
         "Exclusions!C2: Exclusion type is missing",
@@ -163,8 +165,8 @@ def test_load_counts_the_extracted_fields_the_reviewer_changed(tmp_path: Path) -
         workbook,
         {
             "Conditions!E5": "scheduled flight departs at least 4 hours late",  # Covered event
-            "Conditions!H5": "4",  # Threshold (hours), typed again as text: not a change
-            "Conditions!M5": "flight delay",  # Aggregate limit group, left empty by extraction
+            "Conditions!I5": "4",  # Threshold (hours), typed again as text: not a change
+            "Conditions!N5": "flight delay",  # Aggregate limit group, left empty by extraction
             "Exclusions!G3": "yes",  # Concerns Cause of the typhoon warning
         },
     )
@@ -181,7 +183,7 @@ def test_load_counts_the_extracted_fields_the_reviewer_changed(tmp_path: Path) -
     assert loaded.problems == ()
     # Three fields edited, and the six fields of the deleted row. The added
     # row was not extracted, so none of its fields count.
-    assert (loaded.extracted_fields, loaded.changed_fields) == (32, 9)
+    assert (loaded.extracted_fields, loaded.changed_fields) == (33, 9)
 
 
 def test_clause_references_are_checked_against_the_stored_clauses_of_the_wording_version(
@@ -202,7 +204,7 @@ def test_clause_references_are_checked_against_the_stored_clauses_of_the_wording
 
     assert load_workbook(workbook, store=store).problems == ()
     assert [str(p) for p in load_workbook(workbook, store=old_only).problems] == [
-        "Conditions!P5: 第三十條 is not among the stored Clauses of 享樂遊 (new wording)",
+        "Conditions!Q5: 第三十條 is not among the stored Clauses of 享樂遊 (new wording)",
         "Exclusions!H2: 第十八條 is not among the stored Clauses of 享樂遊 (new wording)",
         "Exclusions!H3: 第三十一條 is not among the stored Clauses of 享樂遊 (new wording)",
         "Exclusions!H4: 第三十一條 is not among the stored Clauses of 享樂遊 (new wording)",
@@ -247,7 +249,7 @@ def test_rows_sorted_in_excel_or_with_a_corrected_key_are_still_matched(tmp_path
     loaded = load_workbook(workbook, store=store)
 
     assert loaded.problems == ()
-    assert (loaded.extracted_fields, loaded.changed_fields) == (32, 1)
+    assert (loaded.extracted_fields, loaded.changed_fields) == (33, 1)
 
 
 def test_an_exclusion_type_must_be_on_the_list_of_every_benefit_it_applies_to(
@@ -255,15 +257,41 @@ def test_an_exclusion_type_must_be_on_the_list_of_every_benefit_it_applies_to(
 ) -> None:
     workbook, store = import_draft(tmp_path)
     confirm(workbook)
-    review(workbook, {"Exclusions!D4": "flight delay; trip change"})  # first replacement not taken
+    review(
+        workbook, {"Exclusions!D4": "flight delay; baggage delay"}
+    )  # first replacement not taken
 
     loaded = load_workbook(workbook, store=store)
 
     assert [str(problem) for problem in loaded.problems] == [
         (
             "Exclusions!C4: Exclusion type first replacement not taken"
-            " is not on the list for trip change"
+            " is not on the list for baggage delay"
         )
+    ]
+
+
+def test_trip_cancellation_needs_its_window_and_eligible_costs_come_from_the_benefits_list(
+    tmp_path: Path,
+) -> None:
+    workbook, store = import_draft(tmp_path, ScriptedModels(extractions=TRIP_EXTRACTIONS))
+    confirm(workbook)
+    assert load_workbook(workbook, store=store).problems == ()
+    review(
+        workbook,
+        {
+            # Window (days before departure) of trip cancellation / relative's death
+            "Conditions!H5": None,
+            # Eligible costs of trip change / strike
+            "Conditions!O8": "transport; meals",
+        },
+    )
+
+    loaded = load_workbook(workbook, store=store)
+
+    assert [str(problem) for problem in loaded.problems] == [
+        "Conditions!H5: Window (days before departure) is missing",
+        "Conditions!O8: Eligible costs: meals is not one of: transport, lodging",
     ]
 
 
@@ -279,7 +307,7 @@ def test_the_old_wording_rule_needs_the_first_replacement_exclusion_and_its_prov
 
     assert [str(p) for p in load_workbook(workbook, store=store).problems] == [
         (
-            "Conditions!I5: the old-wording rule takes its force-majeure reading from the "
+            "Conditions!J5: the old-wording rule takes its force-majeure reading from the "
             "proviso of a first replacement not taken exclusion, and no such exclusion with "
             "a proviso applies to flight delay"
         )

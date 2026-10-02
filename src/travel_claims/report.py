@@ -11,7 +11,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from travel_claims.alignment import AlignmentTable
 from travel_claims.conditions import nt_dollars
-from travel_claims.judging import PlanAmount, VerdictMatrix
+from travel_claims.judging import NamedCost, PlanAmount, VerdictMatrix
 from travel_claims.local_models import (
     UNDATED,
     UNDATED_DAYS,
@@ -37,6 +37,8 @@ _BREAKDOWN_COLUMNS = (
     "Clause",
     "Delay period",
     "Steps",
+    "Eligible costs",
+    "Costs named",
 )
 _DELAY_COLUMN = _BREAKDOWN_COLUMNS.index("Delay period") + 1
 _AMOUNTS = "Amounts"
@@ -52,7 +54,7 @@ _AMOUNT_COLUMNS = (
     "Total",
     "Source",
 )
-_WIDE_COLUMNS = {"Grounds", "As read from the Scenario"}
+_WIDE_COLUMNS = {"Grounds", "As read from the Scenario", "Costs named"}
 
 
 def describe_facts(facts: ScenarioFacts) -> list[tuple[str | None, str]]:
@@ -80,6 +82,12 @@ def describe_facts(facts: ScenarioFacts) -> list[tuple[str | None, str]]:
     return lines
 
 
+def describe_cost(cost: NamedCost) -> str:
+    """A cost the Scenario names, with whether it is eligible and the Clause that says so."""
+    eligible = "eligible" if cost.eligible else "not eligible"
+    return f"{cost.text} ({cost.category}): {eligible}, {cost.clause}"
+
+
 def describe_amount(paid: PlanAmount, steps: int | None) -> str:
     """What a paid outcome pays under one Plan, with its source, on one line."""
     if steps is not None and paid.total is None:
@@ -105,7 +113,9 @@ def write_matrix(path: Path, matrix: VerdictMatrix) -> None:
     amount per Plan of each paid outcome.
 
     Each Cause-ambiguous outcome is followed by a row for each reading of each
-    provision it turns on. An existing file is never overwritten.
+    provision it turns on. The benefits not judged are listed below the
+    Scenario; when no benefit of the Scenario is judged, that is all there is.
+    An existing file is never overwritten.
     """
     if path.exists():
         raise FileExistsError(f"{path} already exists; name a new file for the export")
@@ -114,13 +124,19 @@ def write_matrix(path: Path, matrix: VerdictMatrix) -> None:
     assert verdicts is not None  # a new workbook has one sheet
     verdicts.title = _MATRIX
     verdicts.append(["Scenario", matrix.scenario])
-    verdicts["A1"].font = Font(bold=True)
     verdicts["B1"].alignment = Alignment(wrap_text=True, vertical="top")
+    if matrix.not_supported:
+        verdicts.append(["Not supported", "; ".join(matrix.not_supported)])
+    for row in verdicts.iter_rows(min_col=1, max_col=1):
+        row[0].font = Font(bold=True)
+    verdicts.column_dimensions["B"].width = 60
+    if not matrix.cells:
+        _save(book, path)
+        return
     verdicts.append([])
     _heading(verdicts, ("Product", "Wording version", "Verdict", "Reason"))
     for cell in matrix.cells:
         verdicts.append([cell.product, str(cell.wording), str(cell.verdict), _text(cell.reason)])
-    verdicts.column_dimensions["B"].width = 60
 
     facts = book.create_sheet(_FACTS)
     _heading(facts, ("Fact", "As read from the Scenario"))
@@ -145,6 +161,8 @@ def write_matrix(path: Path, matrix: VerdictMatrix) -> None:
                     str(outcome.clause),
                     outcome.delay,
                     outcome.steps,
+                    "; ".join(outcome.eligible_costs) or None,
+                    "\n".join(describe_cost(cost) for cost in outcome.costs) or None,
                 ],
             )
             for provision in outcome.turns_on:
@@ -181,9 +199,7 @@ def write_matrix(path: Path, matrix: VerdictMatrix) -> None:
                         paid.source,
                     ]
                 )
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    book.save(path)
+    _save(book, path)
 
 
 def write_alignment(path: Path, table: AlignmentTable) -> None:
@@ -208,6 +224,10 @@ def write_alignment(path: Path, table: AlignmentTable) -> None:
             written.alignment = Alignment(wrap_text=True, vertical="top")
     for index in range(len(table.columns)):
         sheet.column_dimensions[get_column_letter(3 + 2 * index)].width = 60
+    _save(book, path)
+
+
+def _save(book: Workbook, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     book.save(path)
 
@@ -234,6 +254,12 @@ def _text(value: object | None) -> str | None:
 
 
 def _incident(incident: Incident) -> str:
+    if incident.event is not None:
+        return incident.event
+    return _flight(incident)
+
+
+def _flight(incident: Incident) -> str:
     leg = f"{incident.leg} " if incident.leg else ""
     transport = incident.transport or "transport not stated"
     airport = f" from {incident.airport}" if incident.airport else ""
@@ -241,6 +267,33 @@ def _incident(incident: Incident) -> str:
 
 
 def _incident_details(incident: Incident) -> list[str]:
+    """An incident's timing, its flight if it states one, and the costs it names."""
+    costs = [f"cost: {cost.text} ({cost.category})" for cost in incident.costs]
+    if incident.event is None:
+        return [*_flight_details(incident), *costs]
+    flight = incident.transport or incident.scheduled_departure or incident.stated_delay
+    details = [_event_day(incident)]
+    if flight:
+        details += [_flight(incident), *_flight_details(incident)]
+    return [*details, *costs]
+
+
+def _event_day(incident: Incident) -> str:
+    """When the event happened, relative to the trip's departure."""
+    when = []
+    day = incident.event_day
+    if day is not None:
+        if day == 0:
+            when.append("on the departure day")
+        else:
+            noun = "day" if abs(day) == 1 else "days"
+            when.append(f"{abs(day)} {noun} {'before' if day < 0 else 'after'} departure")
+    if incident.during_trip is not None:
+        when.append("during the overseas trip" if incident.during_trip else "before the trip began")
+    return ", ".join(when) or "when not stated"
+
+
+def _flight_details(incident: Incident) -> list[str]:
     times = [f"scheduled departure {_time(incident.scheduled_departure)}"]
     if incident.actual_departure is not None:
         times.append(f"actual departure {_time(incident.actual_departure)}")

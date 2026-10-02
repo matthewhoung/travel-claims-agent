@@ -1,11 +1,13 @@
 """享樂遊 in the new wording, and in the old, as the tests import it.
 
-Each fixture holds its general provisions and its flight-delay Clauses,
-captured from the new- and old-wording bundles; the new one also holds the
-baggage-delay, baggage-loss and travel-document Clauses. The local models are
-scripted to extract the flight-delay Condition, two of its exclusions and one
-general exclusion. The old wording has no typhoon exclusion: its 第三十一條 二
-is the strike exclusion, and its first-replacement exclusion is 第三十一條 四.
+Each fixture holds its general provisions and its trip-cancellation,
+flight-delay and trip-change Clauses, captured from the new- and old-wording
+bundles; the new one also holds the baggage-delay, baggage-loss and
+travel-document Clauses. The local models are scripted to extract the
+flight-delay Condition, two of its exclusions and one general exclusion, and
+with TRIP_EXTRACTIONS also trip cancellation and trip change. The old wording
+has no typhoon exclusion: its 第三十一條 二 is the strike exclusion, and its
+first-replacement exclusion is 第三十一條 四.
 """
 
 import csv
@@ -117,6 +119,85 @@ OLD_EXTRACTIONS = {
     31: Extraction(exclusions=(OLD_STRIKE, OLD_FIRST_REPLACEMENT)),
 }
 
+# Trip cancellation and trip change, two of the covered causes of each as a
+# Condition of its own. The new wording caps the total paid in the policy period
+# in each cover Clause; the old does not.
+RELATIVE_DIES = "death or critical illness of the insured or a relative"
+CANCELLED_BY_RELATIVES_DEATH = ExtractedCondition(
+    covered_event="因被保險人、配偶或三親等內親屬死亡或病危，必須取消預定之全部旅程",
+    coverage_requirements=(RELATIVE_DIES,),
+    threshold_hours=None,
+    benefit_type=BenefitType.REIMBURSEMENT,
+    step_hours=None,
+    max_claims_per_period=None,
+    label="relative's death",
+    coverage_window="自預定海外旅程開始前二十日起至海外旅行期間開始時止",
+    window_days=20,
+    eligible_costs=("tour fee", "transport", "lodging", "tickets"),
+    item="一",
+)
+CANCELLED_BY_STRIKE = replace(
+    CANCELLED_BY_RELATIVES_DEATH,
+    covered_event="因預定搭乘之公共交通工具業者之受僱人罷工致班次取消或延誤二十四小時以上，"
+    "必須取消預定之全部旅程",
+    coverage_requirements=("strike cancelling or delaying the booked transport",),
+    label="strike",
+    item="三",
+)
+CHANGED_BY_STRIKE = ExtractedCondition(
+    covered_event="因預定搭乘之公共交通工具業者之受僱人罷工，必須更改預定旅程",
+    coverage_requirements=("strike of the booked transport",),
+    threshold_hours=None,
+    benefit_type=BenefitType.REIMBURSEMENT,
+    step_hours=None,
+    max_claims_per_period=None,
+    label="strike",
+    coverage_window="海外旅行期間內",
+    eligible_costs=("transport", "lodging"),
+    cost_maximums="原預定之交通或每日住宿費用各增加20%；無證明者每日合計新臺幣2,000元",
+    item="一",
+)
+CHANGED_BY_RELATIVES_DEATH = replace(
+    CHANGED_BY_STRIKE,
+    covered_event="因居住於中華民國境內之配偶或三親等內親屬死亡或病危，必須更改預定旅程",
+    coverage_requirements=("death or critical illness of a spouse or relative in Taiwan",),
+    label="relative's death",
+    item="三",
+)
+OCCURRED_AT_PURCHASE = ExtractedExclusion(
+    type=ExclusionType.OCCURRED_AT_PURCHASE,
+    text="要保人向本公司申請訂立保險契約時已發生之事故。",
+    concerns_cause=False,
+    item="三",
+)
+TRIP_CHANGE_FIRST_REPLACEMENT = replace(FIRST_REPLACEMENT, item="六")
+
+TRIP_EXTRACTIONS = EXTRACTIONS | {
+    27: Extraction(
+        conditions=(CANCELLED_BY_RELATIVES_DEATH, CANCELLED_BY_STRIKE), caps_period_total=True
+    ),
+    28: Extraction(exclusions=(OCCURRED_AT_PURCHASE,)),
+    33: Extraction(
+        conditions=(CHANGED_BY_STRIKE, CHANGED_BY_RELATIVES_DEATH), caps_period_total=True
+    ),
+    34: Extraction(
+        exclusions=(replace(OCCURRED_AT_PURCHASE, item="二"), TRIP_CHANGE_FIRST_REPLACEMENT)
+    ),
+}
+OLD_TRIP_EXTRACTIONS = OLD_EXTRACTIONS | {
+    27: Extraction(
+        conditions=(
+            replace(
+                CANCELLED_BY_RELATIVES_DEATH,
+                coverage_window="自預定海外旅程開始前七日至海外旅行期間開始前",
+                window_days=7,
+            ),
+        )
+    ),
+    28: Extraction(exclusions=(replace(OCCURRED_AT_PURCHASE, item="四"),)),
+    33: Extraction(conditions=(replace(CHANGED_BY_RELATIVES_DEATH, item="二"),)),
+}
+
 
 def import_draft(
     directory: Path, models: ScriptedModels | None = None, wording: Wording = Wording.NEW
@@ -143,7 +224,7 @@ def import_draft(
 
 
 def review(workbook: Path, edits: dict[str, str | float | date | None]) -> None:
-    """Edit cells as the reviewer does in Excel, such as {"Conditions!H5": 6}."""
+    """Edit cells as the reviewer does in Excel, such as {"Conditions!I5": 6}."""
     book = openpyxl.load_workbook(workbook)
     for reference, value in edits.items():
         sheet, cell = reference.split("!")
@@ -194,6 +275,29 @@ def cathay_century_flight_delay(*, maximum: bool = True) -> list[AmountRow]:
             "published",
             int(re.search(r"(\d+)元", row["amount_rule"]).group(1)),  # type: ignore[union-attr]
             int(row["max_per_event"]) if maximum else None,
+            row["source_url"],
+        )
+        for row in published
+    ]
+
+
+def cathay_century_trip_change(condition: str) -> list[AmountRow]:
+    """Cathay Century's published trip-change limits, as Amounts rows of a Condition:
+    NT$60,000 for 安心型(T5) and NT$120,000 for 海外豪華型(U3), with no maximum per incident."""
+    with AMOUNTS_TABLE.open(encoding="utf-8") as file:
+        published = [
+            row
+            for row in csv.DictReader(file)
+            if row["insurer"] == "國泰產險" and row["benefit"] == "旅程更改"
+        ]
+    assert published, f"no published trip-change limits of Cathay Century in {AMOUNTS_TABLE}"
+    return [
+        (
+            condition,
+            row["tier"],
+            "published",
+            int(re.search(r"最高(\d+)元", row["amount_rule"]).group(1)),  # type: ignore[union-attr]
+            None,
             row["source_url"],
         )
         for row in published

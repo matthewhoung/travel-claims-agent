@@ -22,6 +22,7 @@ from travel_claims.conditions import (
     BenefitType,
     ClauseRef,
     Condition,
+    CostCategory,
     DelayPeriodRule,
     ExclusionType,
 )
@@ -34,6 +35,7 @@ from travel_claims.delay_period import (
 )
 from travel_claims.loading import ConditionTable
 from travel_claims.local_models import (
+    Cost,
     Incident,
     Judgement,
     JudgementRequest,
@@ -112,6 +114,17 @@ class PlanAmount:
 
 
 @dataclass(frozen=True)
+class NamedCost:
+    """A cost the Scenario names, marked eligible when its category is one the Condition
+    reimburses, as its Clause lists them."""
+
+    text: str
+    category: CostCategory
+    eligible: bool
+    clause: ClauseRef
+
+
+@dataclass(frozen=True)
 class ConditionOutcome:
     """The outcome of one Condition for one incident of the Scenario."""
 
@@ -136,6 +149,10 @@ class ConditionOutcome:
     # For a paid outcome, what each Plan pays, where its amount is published.
     # The Verdict never depends on it.
     amounts: tuple[PlanAmount, ...] = ()
+    # For a paid reimbursement outcome, the cost categories its Clause lists,
+    # and each cost the Scenario names, eligible or not. No reimbursed amount is computed.
+    eligible_costs: tuple[str, ...] = ()
+    costs: tuple[NamedCost, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -148,6 +165,8 @@ class Cell:
     outcomes: tuple[ConditionOutcome, ...]
     # Only for an undetermined cell.
     reason: Reason | None = None
+    # The Scenario's benefits that are not judged, left out of the Verdict.
+    not_supported: tuple[Benefit, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -155,11 +174,14 @@ class VerdictMatrix:
     scenario: str
     # What the local models read from the Scenario, shown so that a misreading is seen.
     facts: ScenarioFacts
+    # Empty when the Scenario touches no benefit that is judged.
     cells: tuple[Cell, ...]
+    # The Scenario's benefits that are not judged.
+    not_supported: tuple[Benefit, ...] = ()
 
 
-# Benefits judged so far.
-_JUDGED = (Benefit.FLIGHT_DELAY,)
+# The benefits judged. The others are only lined up in the Alignment table.
+JUDGED = (Benefit.TRIP_CANCELLATION, Benefit.FLIGHT_DELAY, Benefit.TRIP_CHANGE)
 
 
 def judge(
@@ -204,6 +226,8 @@ class _ConditionIncident:
     # A threshold or window that code found not met, and its Clause.
     not_met: tuple[str, ClauseRef] | None = None
     judgements: tuple["_Judged", ...] = ()
+    # The costs the incident names.
+    costs: tuple[Cost, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -234,60 +258,118 @@ def _select(state: _State) -> _State:
     facts = state["facts"]
     return {
         "items": tuple(
-            _ConditionIncident(table, condition, number)
+            _ConditionIncident(table, condition, number, costs=incident.costs)
             for table in state["tables"]
             for condition in table.conditions
-            if condition.benefit in facts.benefits and condition.benefit in _JUDGED
-            for number in range(1, len(facts.incidents) + 1)
+            if condition.benefit in facts.benefits and condition.benefit in JUDGED
+            for number, incident in enumerate(facts.incidents, start=1)
         )
     }
 
 
 def _check(state: _State) -> _State:
-    """Code measures the delay period and checks the threshold and the policy period."""
+    """Code checks what it can of each Condition: for a flight delay the delay period, the
+    threshold and the policy period; for trip cancellation its window before departure;
+    for trip change the overseas travel period. Either is not paid when the Scenario states
+    the trip is outside the policy period; their own windows give no dates to compare."""
     facts = state["facts"]
-    policy_ends = facts.policy_period[1] if facts.policy_period else None
     checked = []
     for item in state["items"]:
-        condition = item.condition
         incident = facts.incidents[item.incident - 1]
-        rule = condition.delay_period_rule
-        assert rule is not None  # Load requires it of a flight delay
-        delay = measure(incident, rule, policy_ends)
-        if isinstance(delay, timedelta):
-            item = replace(item, delay=delay)
-        if rule is DelayPeriodRule.OLD:
-            force_majeure = measure(incident, rule, policy_ends, force_majeure=True)
-            if force_majeure != delay:
-                item = replace(item, force_majeure_delay=force_majeure)
-        missing = _missing_for_window(facts, incident)
-        if isinstance(delay, MissingFact) and delay.fact not in missing:
-            missing.append(delay.fact)
-        if missing:
-            item = replace(item, missing=tuple(missing))
-        elif (window := _outside_policy_period(facts, incident)) is not None:
-            item = replace(item, not_met=(window, condition.clause))
-        elif isinstance(delay, NothingCounts):
-            item = replace(
-                item,
-                not_met=(
-                    f"no replacement flight counts toward the delay period: {delay.why}",
-                    condition.clause,
-                ),
-            )
-        elif isinstance(delay, timedelta) and all(
-            _under_threshold(d, condition)
-            for d in (delay, item.force_majeure_delay)
-            if d is not None
-        ):
-            # Under the threshold under every reading of the Cause.
-            readings = item.force_majeure_delay
-            under = _threshold_not_met(
-                condition, delay, readings if isinstance(readings, timedelta) else None
-            )
-            item = replace(item, not_met=(under, condition.clause))
+        benefit = item.condition.benefit
+        if benefit is Benefit.FLIGHT_DELAY:
+            checked.append(_check_flight_delay(item, facts, incident))
+            continue
+        if facts.within_policy_period is False:
+            window: str | MissingFact | None = _STATED_OUTSIDE
+        elif benefit is Benefit.TRIP_CANCELLATION:
+            window = _outside_cancellation_window(item.condition, incident)
+        else:
+            window = _outside_overseas_travel_period(incident)
+        if isinstance(window, MissingFact):
+            item = replace(item, missing=(window.fact,))
+        elif window is not None:
+            item = replace(item, not_met=(window, item.condition.clause))
         checked.append(item)
     return {"items": tuple(checked)}
+
+
+def _check_flight_delay(
+    item: _ConditionIncident, facts: ScenarioFacts, incident: Incident
+) -> _ConditionIncident:
+    """Code measures the delay period and checks the threshold and the policy period."""
+    condition = item.condition
+    policy_ends = facts.policy_period[1] if facts.policy_period else None
+    rule = condition.delay_period_rule
+    assert rule is not None  # Load requires it of a flight delay
+    delay = measure(incident, rule, policy_ends)
+    if isinstance(delay, timedelta):
+        item = replace(item, delay=delay)
+    if rule is DelayPeriodRule.OLD:
+        force_majeure = measure(incident, rule, policy_ends, force_majeure=True)
+        if force_majeure != delay:
+            item = replace(item, force_majeure_delay=force_majeure)
+    missing = _missing_for_window(facts, incident)
+    if isinstance(delay, MissingFact) and delay.fact not in missing:
+        missing.append(delay.fact)
+    if missing:
+        return replace(item, missing=tuple(missing))
+    if (window := _outside_policy_period(facts, incident)) is not None:
+        return replace(item, not_met=(window, condition.clause))
+    if isinstance(delay, NothingCounts):
+        return replace(
+            item,
+            not_met=(
+                f"no replacement flight counts toward the delay period: {delay.why}",
+                condition.clause,
+            ),
+        )
+    if isinstance(delay, timedelta) and all(
+        _under_threshold(d, condition) for d in (delay, item.force_majeure_delay) if d is not None
+    ):
+        # Under the threshold under every reading of the Cause.
+        readings = item.force_majeure_delay
+        under = _threshold_not_met(
+            condition, delay, readings if isinstance(readings, timedelta) else None
+        )
+        return replace(item, not_met=(under, condition.clause))
+    return item
+
+
+def _outside_cancellation_window(
+    condition: Condition, incident: Incident
+) -> str | MissingFact | None:
+    """Why the event is outside the trip-cancellation window, which opens the Condition's
+    number of days before departure and closes when the overseas travel period begins;
+    None if it is within."""
+    days = condition.window_days
+    assert days is not None  # Load requires it of trip cancellation
+    if incident.after_departure():
+        return (
+            "the event happened during the overseas trip, after the window that closes "
+            "when the overseas travel period begins"
+        )
+    if incident.event_day is None:
+        return MissingFact("the day of the event, counted from departure")
+    if incident.event_day < -days:
+        return (
+            f"the event, {-incident.event_day} days before departure, is outside the window "
+            f"from {days} days before departure to the start of the overseas travel period"
+        )
+    return None
+
+
+def _outside_overseas_travel_period(incident: Incident) -> str | MissingFact | None:
+    """Why the event is outside the overseas travel period; None if it is within. The
+    departure day itself does not say which side it is on."""
+    during = incident.after_departure()
+    if during is None:
+        return MissingFact("whether the event happened during the overseas trip")
+    if not during:
+        return (
+            "the event happened before the overseas trip began, outside the overseas travel period"
+        )
+    return None
 
 
 def _under_threshold(delay: Measured, condition: Condition) -> bool:
@@ -430,20 +512,30 @@ def _exclusions(item: _ConditionIncident) -> list[tuple[Provision, Provision | N
 
 
 def _outcome(state: _State) -> _State:
-    """Code derives each Condition's outcome, and each cell's Verdict from them."""
+    """Code derives each Condition's outcome, and each cell's Verdict from them.
+
+    A benefit that is not judged is listed in each cell and left out of its
+    Verdict; a Scenario that touches no judged benefit gets only that notice.
+    """
+    facts = state["facts"]
+    not_supported = tuple(b for b in facts.benefits if b not in JUDGED)
+    if not any(b in JUDGED for b in facts.benefits):
+        return {"matrix": VerdictMatrix(state["scenario"], facts, (), not_supported)}
     cells = []
     for table in state["tables"]:
         mine = tuple(_condition_outcome(c) for c in state["items"] if c.table is table)
         verdicts = {o.verdict for o in mine}
+        reason = None
         if Verdict.PAID in verdicts:
-            cells.append(Cell(table.product, table.wording, Verdict.PAID, mine))
+            verdict = Verdict.PAID
         elif Verdict.UNDETERMINED in verdicts:
+            verdict = Verdict.UNDETERMINED
             precedence = list(Reason)
             reason = min((o.reason for o in mine if o.reason is not None), key=precedence.index)
-            cells.append(Cell(table.product, table.wording, Verdict.UNDETERMINED, mine, reason))
         else:
-            cells.append(Cell(table.product, table.wording, Verdict.NOT_PAID, mine))
-    return {"matrix": VerdictMatrix(state["scenario"], state["facts"], tuple(cells))}
+            verdict = Verdict.NOT_PAID
+        cells.append(Cell(table.product, table.wording, verdict, mine, reason, not_supported))
+    return {"matrix": VerdictMatrix(state["scenario"], facts, tuple(cells), not_supported)}
 
 
 def _condition_outcome(item: _ConditionIncident) -> ConditionOutcome:
@@ -524,7 +616,7 @@ def _from_judgements(item: _ConditionIncident, judged: tuple[_Judged, ...]) -> C
     turning = [u for u in unsettled if isinstance(u.judgement, TurnsOnCause)]
     if turning:
         provisions = [_turning(item, judged, u, turning) for u in turning]
-        if measured is None:
+        if item.force_majeure_delay is not None and measured is None:
             # The delay period turns on the force-majeure proviso: cite the rule too.
             proviso = next(
                 p
@@ -555,7 +647,8 @@ def _from_judgements(item: _ConditionIncident, judged: tuple[_Judged, ...]) -> C
             silent[0].provision.clause,
             delay,
         )
-    assert delay is not None  # an open proviso leaves the outcome undetermined above
+    # An open force-majeure proviso leaves the outcome undetermined above.
+    assert measured is not None or item.force_majeure_delay is None
     return _paid(item, delay)
 
 
@@ -687,25 +780,38 @@ def _shown(delay: Measured | None) -> timedelta | None:
     return delay if isinstance(delay, timedelta) else None
 
 
-def _paid(item: _ConditionIncident, delay: timedelta) -> ConditionOutcome:
+def _paid(item: _ConditionIncident, delay: timedelta | None) -> ConditionOutcome:
+    """A paid outcome: the delay and steps of a fixed amount, or what a reimbursement pays
+    for and whether each cost named is eligible. No reimbursed amount is computed."""
     condition = item.condition
     steps = None
-    grounds = f"a delay of {_duration(delay)}"
-    if condition.benefit_type is BenefitType.PROGRESSIVE and condition.step_hours:
-        steps = delay // timedelta(hours=condition.step_hours)
-        noun = "step" if steps == 1 else "steps"
-        grounds += f": {steps} full {noun} of {condition.step_hours:g} hours"
+    grounds = [] if delay is None else [f"a delay of {_duration(delay)}"]
+    reimbursed = condition.benefit_type is BenefitType.REIMBURSEMENT
+    if reimbursed:
+        grounds.append(f"reimburses {', '.join(condition.eligible_costs) or 'no listed cost'}")
+    elif delay is not None and condition.benefit_type is BenefitType.PROGRESSIVE:
+        if condition.step_hours:
+            steps = delay // timedelta(hours=condition.step_hours)
+            noun = "step" if steps == 1 else "steps"
+            grounds.append(f"{steps} full {noun} of {condition.step_hours:g} hours")
     elif condition.benefit_type is BenefitType.ONE_OFF:
-        grounds += ": one payment"
+        grounds.append("one payment")
     return ConditionOutcome(
         condition.key,
         item.incident,
         Verdict.PAID,
-        grounds,
+        ": ".join(grounds),
         condition.clause,
         delay,
         steps,
         amounts=_plan_amounts(item, steps),
+        eligible_costs=condition.eligible_costs if reimbursed else (),
+        costs=tuple(
+            NamedCost(c.text, c.category, c.category in condition.eligible_costs, condition.clause)
+            for c in item.costs
+        )
+        if reimbursed
+        else (),
     )
 
 

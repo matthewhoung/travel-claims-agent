@@ -8,11 +8,13 @@ import openpyxl
 import pytest
 
 from travel_claims.cli import main
-from travel_claims.conditions import Benefit
+from travel_claims.conditions import Benefit, CostCategory
 from travel_claims.local_models import (
     UNDATED,
     ArrangedBy,
+    Cost,
     Incident,
+    Judgement,
     Leg,
     Reading,
     Replacement,
@@ -63,8 +65,8 @@ def test_list_policies_labels_each_rider_with_its_parent(
     out = capsys.readouterr().out
     assert out.startswith(
         "1. 國泰產物享樂遊海外旅行綜合保險\n"
-        "   pages 37–44, suggested wording: old\n"
-        "   10 Clauses: 第一條–第五條, 第十八條, 第二十七條, 第三十條–第三十二條\n"
+        "   pages 37–45, suggested wording: old\n"
+        "   13 Clauses: 第一條–第五條, 第十八條, 第二十七條–第二十八條, 第三十條–第三十四條\n"
         "2. 國泰產物享樂遊海外旅行綜合保險寵物寄宿延長補償保險金附加條款\n"
         "   rider of 國泰產物享樂遊海外旅行綜合保險\n"
         "   page 55, no suggested wording (no flight-delay exclusions)\n"
@@ -94,7 +96,7 @@ def test_import_writes_a_draft_workbook_and_says_how_to_confirm_it(
 
     assert capsys.readouterr().out == (
         "Imported 國泰產物享樂遊海外旅行綜合保險 (pages 13–17) as 享樂遊, new wording.\n"
-        "Stored 22 Clauses. Extracted 1 Condition and 3 exclusions into the draft workbook\n"
+        "Stored 25 Clauses. Extracted 1 Condition and 3 exclusions into the draft workbook\n"
         f"{workbook}\n"
         "Review it in Excel, and record who confirmed it and when above the Conditions table.\n"
         "Then check it with:\n"
@@ -117,7 +119,7 @@ def test_load_lists_every_problem_and_the_fields_changed(
         "2 problems:\n"
         "Conditions!B1: Confirmed by is missing\n"
         "Conditions!B2: Confirmed on is missing\n"
-        "32 fields extracted, 0 changed by the reviewer.\n"
+        "33 fields extracted, 0 changed by the reviewer.\n"
     )
 
     book = openpyxl.load_workbook(workbook)
@@ -130,7 +132,7 @@ def test_load_lists_every_problem_and_the_fields_changed(
     assert capsys.readouterr().out == (
         "No problems. 享樂遊, new wording: 1 Condition and 3 exclusions,"
         " confirmed by 王小明 on 2026-10-01.\n"
-        "32 fields extracted, 1 changed by the reviewer.\n"
+        "33 fields extracted, 1 changed by the reviewer.\n"
     )
 
 
@@ -264,6 +266,85 @@ def test_judge_prints_the_amount_per_plan_of_a_paid_outcome(
         " (source: https://example.com/a)\n"
         "    B: NT$6,000 per step, 3 steps; no maximum per incident is given, so no total"
         " (source: https://example.com/b)\n"
+    )
+
+
+def test_judge_prints_each_cost_named_and_the_benefits_not_supported(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(
+        tmp_path, ScriptedModels(extractions=hsiang_le_you.TRIP_EXTRACTIONS)
+    )
+    hsiang_le_you.confirm(workbook)
+    hsiang_le_you.enter_amounts(
+        workbook, hsiang_le_you.cathay_century_trip_change("trip change / strike")
+    )
+    facts = ScenarioFacts(
+        benefits=(Benefit.TRIP_CHANGE, Benefit.BAGGAGE_DELAY),
+        incidents=(
+            Incident(
+                leg=None,
+                airport=None,
+                transport=None,
+                event="當地航空公司地勤罷工",
+                during_trip=True,
+                costs=(
+                    Cost("多住一晚的飯店費用", CostCategory.LODGING),
+                    Cost("多出來的餐費", CostCategory.MEALS),
+                ),
+            ),
+        ),
+        cause="罷工",
+    )
+    judgements: dict[str, Judgement] = {
+        "第三十三條 一": Settled(met=True),
+        "第三十三條 三": Settled(met=False),
+        "第三十四條 二": Settled(met=False),
+        "第三十四條 六": Settled(met=False),
+        "第四條 二": Settled(met=False),
+    }
+
+    main(
+        ["judge", "--scenario=旅途中遇到罷工……", str(workbook), f"--store={store.directory}"],
+        models=ScriptedModels(facts=facts, judgements=judgements),
+    )
+
+    source = "https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/"
+    out = capsys.readouterr().out
+    assert out.startswith(
+        "Facts read from the Scenario:\n"
+        "  Benefits: trip change, baggage delay\n"
+        "  Incident 1: 當地航空公司地勤罷工\n"
+        "    during the overseas trip\n"
+        "    cost: 多住一晚的飯店費用 (lodging)\n"
+        "    cost: 多出來的餐費 (meals)\n"
+    )
+    assert "\n享樂遊, new wording: paid\n  not supported: baggage delay\n" in out
+    assert (
+        "  trip change / strike, incident 1: paid (第三十三條 一)\n"
+        "    reimburses transport, lodging\n"
+        f"    安心型(T5): limit NT$60,000 (source: {source})\n"
+        f"    海外豪華型(U3): limit NT$120,000 (source: {source})\n"
+        "    cost: 多住一晚的飯店費用 (lodging): eligible, 第三十三條 一\n"
+        "    cost: 多出來的餐費 (meals): not eligible, 第三十三條 一\n"
+    ) in out
+
+
+def test_judge_prints_only_the_notice_when_no_benefit_is_supported(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workbook, store = hsiang_le_you.import_draft(tmp_path)
+    hsiang_le_you.confirm(workbook)
+    facts = ScenarioFacts(benefits=(Benefit.BAGGAGE_LOSS,), incidents=())
+
+    main(
+        ["judge", "--scenario=行李遺失。", str(workbook), f"--store={store.directory}"],
+        models=ScriptedModels(facts=facts),
+    )
+
+    assert capsys.readouterr().out.endswith(
+        "\nNot supported: baggage loss. The Scenario touches no benefit that is judged: "
+        "trip cancellation, flight delay or trip change.\n"
     )
 
 

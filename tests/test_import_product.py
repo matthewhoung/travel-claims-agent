@@ -13,16 +13,19 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from travel_claims.app import CannotImport, import_product, load_workbook
 from travel_claims.clause_store import ClauseStore
-from travel_claims.conditions import Benefit
+from travel_claims.conditions import Benefit, BenefitType
 from travel_claims.local_models import ClauseRole, Extraction
 from travel_claims.policies import Wording
 
 from hsiang_le_you import (
     BAGGAGE_DELAY,
+    CANCELLED_BY_RELATIVES_DEATH,
+    CANCELLED_BY_STRIKE,
     FIRST_REPLACEMENT,
     FIXTURE,
     FLIGHT_DELAY,
     RETURN_HOME,
+    TRIP_EXTRACTIONS,
     TYPHOON,
     WILFUL_ACT,
     confirm,
@@ -66,6 +69,7 @@ def test_import_drafts_a_workbook_with_the_flight_delay_condition(tmp_path: Path
             "Coverage requirements": "scheduled flight; as a passenger",
             "Coverage window": "the dates and times on the policy schedule\n"
             "extended up to 24 hours for a delayed arrival",
+            "Window (days before departure)": None,
             "Threshold (hours)": 4,
             "Delay-period rule": "new-wording rule",
             "Benefit type": "progressive fixed amount",
@@ -178,16 +182,20 @@ def test_the_general_provisions_and_the_extracted_benefits_are_extracted_and_eve
 
     imported(tmp_path, models)
 
-    # Flight delay is judged; baggage delay, baggage loss and loss of travel
-    # documents are extracted for the Alignment table only. Trip cancellation
-    # (第二十七條) is not extracted yet, nor claim documents or recovery Clauses.
+    # Trip cancellation, flight delay and trip change are judged; baggage delay,
+    # baggage loss and loss of travel documents are extracted for the Alignment
+    # table only. Claim documents and recovery Clauses are not extracted.
     assert [(r.clause.number, r.role, r.benefit) for r in models.extracted] == [
         (3, ClauseRole.DEFINITIONS, None),
         (4, ClauseRole.GENERAL_EXCLUSIONS, None),
         (5, ClauseRole.POLICY_PERIOD, None),
         (6, ClauseRole.POLICY_PERIOD, None),
+        (27, ClauseRole.BENEFIT_COVER, Benefit.TRIP_CANCELLATION),
+        (28, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.TRIP_CANCELLATION),
         (30, ClauseRole.BENEFIT_COVER, Benefit.FLIGHT_DELAY),
         (31, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.FLIGHT_DELAY),
+        (33, ClauseRole.BENEFIT_COVER, Benefit.TRIP_CHANGE),
+        (34, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.TRIP_CHANGE),
         (36, ClauseRole.BENEFIT_COVER, Benefit.BAGGAGE_DELAY),
         (37, ClauseRole.BENEFIT_EXCLUSIONS, Benefit.BAGGAGE_DELAY),
         (39, ClauseRole.BENEFIT_COVER, Benefit.BAGGAGE_LOSS),
@@ -199,10 +207,120 @@ def test_the_general_provisions_and_the_extracted_benefits_are_extracted_and_eve
     # Each with the other Clauses of its chapter as context.
     context = {r.clause.number: [c.number for c in r.context] for r in models.extracted}
     assert context[4] == [1, 3, 5, 6]
-    assert context[30] == [27, 31, 32, *range(36, 48)]
+    assert context[30] == [27, 28, 31, 32, 33, 34, *range(36, 48)]
     assert models.indexed == [
-        ("享樂遊", Wording.NEW, (1, 3, 4, 5, 6, 18, 27, 30, 31, 32, *range(36, 48)))
+        ("享樂遊", Wording.NEW, (1, 3, 4, 5, 6, 18, 27, 28, 30, 31, 32, 33, 34, *range(36, 48)))
     ]
+
+
+def test_trip_cancellation_and_trip_change_are_drafted_one_condition_per_covered_cause(
+    tmp_path: Path,
+) -> None:
+    book = imported(tmp_path, ScriptedModels(extractions=TRIP_EXTRACTIONS))
+
+    conditions = table(book["Conditions"], header_row=4)
+    trips = [c for c in conditions if c["Benefit"] in ("trip cancellation", "trip change")]
+    assert [
+        (
+            c["Condition key"],
+            c["Coverage requirements"],
+            c["Coverage window"],
+            c["Window (days before departure)"],
+            c["Benefit type"],
+            c["Eligible costs"],
+            c["Aggregate limit group"],
+            c["Clause reference"],
+        )
+        for c in trips
+    ] == [
+        (
+            "trip cancellation / relative's death",
+            "death or critical illness of the insured or a relative",
+            "自預定海外旅程開始前二十日起至海外旅行期間開始時止",
+            20,
+            "reimbursement",
+            "tour fee; transport; lodging; tickets",
+            "trip cancellation",
+            "第二十七條 一",
+        ),
+        (
+            "trip cancellation / strike",
+            "strike cancelling or delaying the booked transport",
+            "自預定海外旅程開始前二十日起至海外旅行期間開始時止",
+            20,
+            "reimbursement",
+            "tour fee; transport; lodging; tickets",
+            "trip cancellation",
+            "第二十七條 三",
+        ),
+        (
+            "trip change / strike",
+            "strike of the booked transport",
+            "海外旅行期間內",
+            None,
+            "reimbursement",
+            "transport; lodging",
+            "trip change",
+            "第三十三條 一",
+        ),
+        (
+            "trip change / relative's death",
+            "death or critical illness of a spouse or relative in Taiwan",
+            "海外旅行期間內",
+            None,
+            "reimbursement",
+            "transport; lodging",
+            "trip change",
+            "第三十三條 三",
+        ),
+    ]
+    assert trips[2]["Cost maximums"] == (
+        "原預定之交通或每日住宿費用各增加20%；無證明者每日合計新臺幣2,000元"
+    )
+    assert [
+        (e["Exclusion type"], e["Applies to"], e["Clause reference"])
+        for e in table(book["Exclusions"])
+        if str(e["Clause reference"]).startswith(("第二十八條", "第三十四條"))
+    ] == [
+        (
+            "incident already occurred at purchase",
+            "trip cancellation / relative's death; trip cancellation / strike",
+            "第二十八條 三",
+        ),
+        (
+            "incident already occurred at purchase",
+            "trip change / strike; trip change / relative's death",
+            "第三十四條 二",
+        ),
+        (
+            "first replacement not taken",
+            "trip change / strike; trip change / relative's death",
+            "第三十四條 六",
+        ),
+    ]
+
+
+def test_conditions_share_an_aggregate_limit_group_only_where_their_clause_caps_the_period_total(
+    tmp_path: Path,
+) -> None:
+    def groups(directory: Path, cover: Extraction) -> list[object]:
+        book = imported(directory, ScriptedModels(extractions={27: cover}))
+        return [c["Aggregate limit group"] for c in table(book["Conditions"], header_row=4)]
+
+    both = (CANCELLED_BY_RELATIVES_DEATH, CANCELLED_BY_STRIKE)
+    # The Clause caps the total paid in the policy period, and the Benefit has
+    # several reimbursement Conditions.
+    assert groups(tmp_path / "capped", Extraction(both, caps_period_total=True)) == [
+        "trip cancellation",
+        "trip cancellation",
+    ]
+    assert groups(tmp_path / "uncapped", Extraction(both)) == [None, None]
+    # One Condition shares its limit with no other.
+    one = Extraction((CANCELLED_BY_RELATIVES_DEATH,), caps_period_total=True)
+    assert groups(tmp_path / "one", one) == [None]
+    # Fixed amounts are not reimbursed, so there is no total of reimbursements to cap.
+    fixed = tuple(replace(c, benefit_type=BenefitType.ONE_OFF) for c in both)
+    assert groups(tmp_path / "fixed", Extraction(fixed, caps_period_total=True)) == [None, None]
 
 
 def test_an_alignment_only_benefits_exclusions_apply_to_its_own_conditions(

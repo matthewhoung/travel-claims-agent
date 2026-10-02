@@ -7,14 +7,17 @@ import openpyxl
 import pytest
 
 from travel_claims.app import export_verdict_matrix, judge_scenario
-from travel_claims.local_models import Settled
+from travel_claims.conditions import Benefit, CostCategory
+from travel_claims.local_models import Cost, Incident, ScenarioFacts, Settled
 
 from hsiang_le_you import (
     FORCE_MAJEURE,
     NOTHING_APPLIES,
     PROVISO,
     ROAD_CLOSURE,
+    TRIP_EXTRACTIONS,
     cathay_century_flight_delay,
+    cathay_century_trip_change,
     confirm,
     delayed_by,
     enter_amounts,
@@ -74,6 +77,8 @@ def test_the_verdict_matrix_exports_with_its_facts_and_breakdown(tmp_path: Path)
             "Clause",
             "Delay period",
             "Steps",
+            "Eligible costs",
+            "Costs named",
         ),
         (
             "享樂遊",
@@ -87,6 +92,8 @@ def test_the_verdict_matrix_exports_with_its_facts_and_breakdown(tmp_path: Path)
             f"turns on how the Cause is classified, under the proviso: {PROVISO}",
             "第三十一條 五",
             timedelta(hours=5),
+            None,
+            None,
             None,
         ),
         (
@@ -102,6 +109,8 @@ def test_the_verdict_matrix_exports_with_its_facts_and_breakdown(tmp_path: Path)
             "第三十條",
             timedelta(hours=5),
             None,
+            None,
+            None,
         ),
         (
             "享樂遊",
@@ -115,6 +124,8 @@ def test_the_verdict_matrix_exports_with_its_facts_and_breakdown(tmp_path: Path)
             f"the exclusion applies: {first_replacement}",
             "第三十一條 五",
             timedelta(hours=5),
+            None,
+            None,
             None,
         ),
     ]
@@ -162,3 +173,99 @@ def test_an_export_never_overwrites_a_file(tmp_path: Path) -> None:
         export_verdict_matrix(matrix, path=workbook)
 
     assert openpyxl.load_workbook(workbook).sheetnames[0] == "Conditions"
+
+
+def test_the_export_carries_named_costs_and_the_benefits_not_supported(tmp_path: Path) -> None:
+    workbook, store = import_draft(tmp_path, ScriptedModels(extractions=TRIP_EXTRACTIONS))
+    confirm(workbook)
+    enter_amounts(workbook, cathay_century_trip_change("trip change / strike"))
+    facts = ScenarioFacts(
+        benefits=(Benefit.TRIP_CHANGE, Benefit.BAGGAGE_DELAY),
+        incidents=(
+            Incident(
+                leg=None,
+                airport=None,
+                transport=None,
+                event="當地航空公司地勤罷工",
+                event_day=3,
+                costs=(
+                    Cost("多住一晚的飯店費用", CostCategory.LODGING),
+                    Cost("多出來的餐費", CostCategory.MEALS),
+                ),
+            ),
+        ),
+        cause="罷工",
+    )
+    judgements = {
+        "第三十三條 一": Settled(met=True),
+        "第三十三條 三": Settled(met=False),
+        "第三十四條 二": Settled(met=False),
+        "第三十四條 六": Settled(met=False),
+        "第四條 二": Settled(met=False),
+    }
+    matrix = judge_scenario(
+        "旅途中遇到罷工……",
+        [workbook],
+        store=store,
+        models=ScriptedModels(facts=facts, judgements=judgements),
+    )
+    exported = tmp_path / "verdicts.xlsx"
+
+    export_verdict_matrix(matrix, exported)
+
+    assert rows(exported, "Verdict matrix") == [
+        ("Scenario", "旅途中遇到罷工……", None, None),
+        ("Not supported", "baggage delay", None, None),
+        (None, None, None, None),
+        ("Product", "Wording version", "Verdict", "Reason"),
+        ("享樂遊", "new", "paid", None),
+    ]
+    assert rows(exported, "Facts")[1:4] == [
+        ("Benefits", "trip change, baggage delay"),
+        ("Incident 1", "當地航空公司地勤罷工"),
+        (None, "3 days after departure"),
+    ]
+    assert rows(exported, "Facts")[4:6] == [
+        (None, "cost: 多住一晚的飯店費用 (lodging)"),
+        (None, "cost: 多出來的餐費 (meals)"),
+    ]
+    paid = rows(exported, "Breakdown")[1]
+    assert paid[2:] == (
+        "trip change / strike",
+        1,
+        None,
+        None,
+        "paid",
+        None,
+        "reimburses transport, lodging",
+        "第三十三條 一",
+        None,
+        None,
+        "transport; lodging",
+        (
+            "多住一晚的飯店費用 (lodging): eligible, 第三十三條 一\n"
+            "多出來的餐費 (meals): not eligible, 第三十三條 一"
+        ),
+    )
+    source = "https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/"
+    assert rows(exported, "Amounts")[1:] == [
+        ("享樂遊", "new", "trip change / strike", 1, "安心型(T5)", 60000, None, None, source),
+        ("享樂遊", "new", "trip change / strike", 1, "海外豪華型(U3)", 120000, None, None, source),
+    ]
+
+
+def test_a_scenario_with_no_supported_benefit_exports_only_that_notice(tmp_path: Path) -> None:
+    workbook, store = import_draft(tmp_path)
+    confirm(workbook)
+    facts = ScenarioFacts(benefits=(Benefit.BAGGAGE_LOSS,), incidents=())
+    matrix = judge_scenario(
+        "行李遺失。", [workbook], store=store, models=ScriptedModels(facts=facts)
+    )
+    exported = tmp_path / "verdicts.xlsx"
+
+    export_verdict_matrix(matrix, exported)
+
+    assert rows(exported, "Verdict matrix") == [
+        ("Scenario", "行李遺失。"),
+        ("Not supported", "baggage loss"),
+    ]

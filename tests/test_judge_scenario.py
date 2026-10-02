@@ -128,7 +128,7 @@ def test_a_progressive_benefit_pays_each_full_step(tmp_path: Path) -> None:
 
 def test_a_one_off_benefit_pays_once_however_long_the_delay(tmp_path: Path) -> None:
     workbook, store = import_draft(tmp_path)
-    review(workbook, {"Conditions!J5": "one-off fixed amount", "Conditions!K5": None})
+    review(workbook, {"Conditions!K5": "one-off fixed amount", "Conditions!L5": None})
     confirm(workbook)
     models = ScriptedModels(facts=delayed_by(timedelta(hours=8)), judgements=NOTHING_APPLIES)
 
@@ -195,7 +195,7 @@ def test_a_paid_one_off_outcome_pays_the_amount_once_and_shows_only_known_amount
     tmp_path: Path,
 ) -> None:
     workbook, store = import_draft(tmp_path)
-    review(workbook, {"Conditions!J5": "one-off fixed amount", "Conditions!K5": None})
+    review(workbook, {"Conditions!K5": "one-off fixed amount", "Conditions!L5": None})
     confirm(workbook)
     enter_amounts(
         workbook,
@@ -417,7 +417,7 @@ def test_each_confirmed_workbook_gets_its_own_cell_in_the_order_given(tmp_path: 
         store=store,
         models=ScriptedModels(extractions=EXTRACTIONS),
     )
-    review(other, {"Conditions!H5": 6})  # Threshold (hours)
+    review(other, {"Conditions!I5": 6})  # Threshold (hours)
     confirm(other)
     models = ScriptedModels(facts=delayed_by(timedelta(hours=5)), judgements=NOTHING_APPLIES)
 

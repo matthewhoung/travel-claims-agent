@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 
-from travel_claims.conditions import Benefit, BenefitType, ClauseRef, ExclusionType
+from travel_claims.conditions import Benefit, BenefitType, ClauseRef, CostCategory, ExclusionType
 from travel_claims.policies import Clause, Wording
 
 # Extracting from a Clause ----------------------------------------------------
@@ -53,6 +53,9 @@ class ExtractedCondition:
     label: str | None = None
     # None when the Condition is covered within the policy period.
     coverage_window: str | None = None
+    # For a window that opens a number of days before departure.
+    window_days: int | None = None
+    # Values from the Benefit's list in conditions.ELIGIBLE_COSTS.
     eligible_costs: tuple[str, ...] = ()
     cost_maximums: str | None = None
     # The item of the Clause that states the Condition, such as 三.
@@ -78,6 +81,9 @@ class Extraction:
     exclusions: tuple[ExtractedExclusion, ...] = ()
     # What a policy-period Clause says the policy period is.
     policy_period: str | None = None
+    # Whether a cover Clause caps the total paid in the policy period, as in
+    # 保險期間內賠付金額之加總以保險金額為限.
+    caps_period_total: bool = False
 
 
 # The facts of a Scenario ---------------------------------------------------------
@@ -116,8 +122,17 @@ class Replacement:
 
 
 @dataclass(frozen=True)
+class Cost:
+    """A cost a Scenario names, such as a night's lodging, with its category."""
+
+    text: str
+    category: CostCategory
+
+
+@dataclass(frozen=True)
 class Incident:
-    """One incident of a Scenario, such as a delay of the outbound flight."""
+    """One incident of a Scenario, such as a delay of the outbound flight, or what made
+    the insured cancel or change the trip."""
 
     leg: Leg | None
     airport: str | None
@@ -129,6 +144,25 @@ class Incident:
     missed_connection: bool = False
     # A delay stated without times.
     stated_delay: timedelta | None = None
+    # For trip cancellation and trip change: the event that made the insured
+    # cancel or change the trip, such as a relative's death.
+    event: str | None = None
+    # The day it happened, counted from the trip's departure day: -10 is ten
+    # days before, 0 the departure day, 2 the third day of the trip.
+    event_day: int | None = None
+    # Whether it happened during the overseas trip, when the Scenario says so.
+    during_trip: bool | None = None
+    # Costs the Scenario names, which no Benefit requires.
+    costs: tuple[Cost, ...] = ()
+
+    def after_departure(self) -> bool | None:
+        """Whether the event happened during the overseas trip: as the Scenario says, or
+        failing that by its day. None if neither tells, as the departure day itself does not."""
+        if self.during_trip is not None:
+            return self.during_trip
+        if self.event_day:
+            return self.event_day > 0
+        return None
 
 
 @dataclass(frozen=True)

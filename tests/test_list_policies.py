@@ -176,7 +176,11 @@ def test_a_table_of_contents_is_not_a_policy_and_riders_are_labelled_with_their_
     policies = list_policies(FIXTURES / "cathay-old-hsiang-le-you.txt")
 
     assert [(p.name, p.pages, p.clause_numbers) for p in policies] == [
-        ("國泰產物享樂遊海外旅行綜合保險", (37, 44), (1, 2, 3, 4, 5, 18, 27, 30, 31, 32)),
+        (
+            "國泰產物享樂遊海外旅行綜合保險",
+            (37, 45),
+            (1, 2, 3, 4, 5, 18, 27, 28, 30, 31, 32, 33, 34),
+        ),
         ("國泰產物享樂遊海外旅行綜合保險寵物寄宿延長補償保險金附加條款", (55, 55), (1,)),
         ("國泰產物傷害保險恐怖主義行為保險限額給付附加條款", (57, 57), (1,)),
         ("國泰產物享樂遊海外旅行綜合保險班機延誤取代或免檢附部分理賠文件附加條款", (59, 59), (1,)),

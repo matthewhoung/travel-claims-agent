@@ -27,9 +27,11 @@ from hsiang_le_you import (
     EXTRACTIONS,
     FIRST_REPLACEMENT,
     OLD_STRIKE,
+    OLD_TRIP_EXTRACTIONS,
     PROVISO,
     RETURN_HOME,
     STRIKE,
+    TRIP_EXTRACTIONS,
     TYPHOON,
     WILFUL_ACT,
     cathay_century_flight_delay,
@@ -181,6 +183,33 @@ def test_condition_parameters_line_up_by_benefit_and_parameter_each_citing_its_c
     )
     # Every entry cites its Clause; a published amount also gives its source.
     assert all(entry.cites for r in table.rows for cell in r.cells for entry in cell)
+
+
+def test_the_trip_cancellation_window_lines_up_across_wording_versions(tmp_path: Path) -> None:
+    old, store = import_draft(
+        tmp_path, ScriptedModels(extractions=OLD_TRIP_EXTRACTIONS), Wording.OLD
+    )
+    new, _ = import_draft(tmp_path, ScriptedModels(extractions=TRIP_EXTRACTIONS))
+    confirm(old)
+    confirm(new)
+
+    table = build_alignment_table([old, new], store=store)
+
+    # The new wording has a Condition per covered cause, each named by its key.
+    assert row(table, Benefit.TRIP_CANCELLATION, "Window (days before departure)").cells == (
+        (Entry("7", "第二十七條 一"),),
+        (
+            Entry("trip cancellation / relative's death: 20", "第二十七條 一"),
+            Entry("trip cancellation / strike: 20", "第二十七條 三"),
+        ),
+    )
+    assert row(table, Benefit.TRIP_CHANGE, "Eligible costs").cells == (
+        (Entry("transport; lodging", "第三十三條 二"),),
+        (
+            Entry("trip change / strike: transport; lodging", "第三十三條 一"),
+            Entry("trip change / relative's death: transport; lodging", "第三十三條 三"),
+        ),
+    )
 
 
 def test_alignment_only_benefits_appear_with_their_exclusion_types(tmp_path: Path) -> None:

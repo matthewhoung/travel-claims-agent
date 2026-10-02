@@ -21,6 +21,7 @@ from travel_claims.clause_store import ClauseStore
 from travel_claims.conditions import (
     ALL,
     COVERAGE_REQUIREMENTS,
+    ELIGIBLE_COSTS,
     EXCLUSION_TYPES,
     Amount,
     Availability,
@@ -242,6 +243,9 @@ def _conditions(
                 "Coverage requirements", COVERAGE_REQUIREMENTS.get(benefit)
             ),
             coverage_window=fields.optional_text("Coverage window"),
+            window_days=fields.whole(
+                "Window (days before departure)", required=benefit is Benefit.TRIP_CANCELLATION
+            ),
             threshold_hours=fields.number("Threshold (hours)", required=flight_delay),
             delay_period_rule=fields.optional_choice(
                 "Delay-period rule", DelayPeriodRule, required=flight_delay
@@ -252,7 +256,7 @@ def _conditions(
             ),
             max_claims_per_period=fields.whole("Maximum claims per period"),
             aggregate_limit_group=fields.optional_text("Aggregate limit group"),
-            eligible_costs=fields.items("Eligible costs"),
+            eligible_costs=fields.items("Eligible costs", ELIGIBLE_COSTS.get(benefit)),
             cost_maximums=fields.optional_text("Cost maximums"),
             clause=fields.clause("Clause reference"),
         )
@@ -457,8 +461,8 @@ class _Fields:
             self.problem(heading, f"{heading} is not a number: {value}")
             return None
 
-    def whole(self, heading: str) -> int | None:
-        number = self.number(heading)
+    def whole(self, heading: str, *, required: bool = False) -> int | None:
+        number = self.number(heading, required=required)
         if number is None:
             return None
         if number != int(number) or number < 0:

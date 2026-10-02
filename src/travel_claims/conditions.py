@@ -96,12 +96,28 @@ class ExclusionType(StrEnum):
     # Loss of travel documents
     NOT_REPORTED_TO_POLICE = "not reported to the police within 24 hours"
 
+    # Trip cancellation and trip change
+    REFUNDABLE = "refundable or repaid in kind"
+    LAW_OR_GOVERNMENT_ORDER = "law or government order"
+    AGENCY_OR_CARRIER_INSOLVENCY = "travel agency or carrier insolvency"
+    OCCURRED_AT_PURCHASE = "incident already occurred at purchase"
+    LATE_NOTICE = "agency or providers not notified in time"
+    COSTS_IN_TAIWAN = "lodging and transport costs in Taiwan"
+
     OTHER = "other"
 
 
 # The exclusion types of each Benefit, besides OTHER, in the order of the
 # reference clauses. A Benefit not listed yet has only OTHER.
 EXCLUSION_TYPES: dict[Benefit, tuple[ExclusionType, ...]] = {
+    Benefit.TRIP_CANCELLATION: (
+        ExclusionType.REFUNDABLE,
+        ExclusionType.LAW_OR_GOVERNMENT_ORDER,
+        ExclusionType.AGENCY_OR_CARRIER_INSOLVENCY,
+        ExclusionType.OCCURRED_AT_PURCHASE,
+        ExclusionType.STRIKE,
+        ExclusionType.LATE_NOTICE,
+    ),
     Benefit.FLIGHT_DELAY: (
         ExclusionType.OWN_REASON,
         ExclusionType.TYPHOON_WARNING,
@@ -110,6 +126,16 @@ EXCLUSION_TYPES: dict[Benefit, tuple[ExclusionType, ...]] = {
         ExclusionType.FIRST_REPLACEMENT_NOT_TAKEN,
         ExclusionType.SELF_ARRANGED_ELSEWHERE,
         ExclusionType.AIRLINE_INSOLVENCY,
+    ),
+    Benefit.TRIP_CHANGE: (
+        ExclusionType.LAW_OR_GOVERNMENT_ORDER,
+        ExclusionType.AGENCY_OR_CARRIER_INSOLVENCY,
+        ExclusionType.OCCURRED_AT_PURCHASE,
+        ExclusionType.TYPHOON_WARNING,
+        ExclusionType.STRIKE,
+        ExclusionType.LATE_NOTICE,
+        ExclusionType.FIRST_REPLACEMENT_NOT_TAKEN,
+        ExclusionType.COSTS_IN_TAIWAN,
     ),
     Benefit.BAGGAGE_DELAY: (
         ExclusionType.RETURN_TO_TAIWAN_AIRPORT,
@@ -139,16 +165,61 @@ EXCLUSION_TYPES: dict[Benefit, tuple[ExclusionType, ...]] = {
     Benefit.TRAVEL_DOCUMENT_LOSS: (ExclusionType.NOT_REPORTED_TO_POLICE,),
 }
 
-# The coverage requirements a Condition of each Benefit may state.
-COVERAGE_REQUIREMENTS: dict[Benefit, tuple[str, ...]] = {
-    Benefit.FLIGHT_DELAY: ("scheduled flight", "as a passenger"),
-}
-
 # The coverage requirements of each Benefit that are covered causes: a provision
 # that concerns the Cause, so its judgement may turn on how the Cause is
-# classified. Flight delay lists no covered causes.
+# classified. Flight delay lists no covered causes. The covered causes of the
+# old and new wordings differ in detail, such as the old trip change covering
+# a relative's death and the new also a critical illness, but line up.
 COVERED_CAUSES: dict[Benefit, tuple[str, ...]] = {
+    Benefit.TRIP_CANCELLATION: (
+        "death or critical illness of the insured or a relative",
+        "witness in a court case in Taiwan",
+        "strike cancelling or delaying the booked transport",
+        "riot or civil commotion at the destination",
+        "home damaged by fire or natural disaster",
+    ),
     Benefit.FLIGHT_DELAY: (),
+    Benefit.TRIP_CHANGE: (
+        "strike of the booked transport",
+        "war, riot or natural disaster where the insured is or is going",
+        "death or critical illness of a spouse or relative in Taiwan",
+        "travel documents robbed, stolen or lost",
+        "accident of the transport taken",
+    ),
+}
+
+# The coverage requirements a Condition of each Benefit may state. A Condition
+# of a Benefit that lists covered causes states one of them: each covered
+# cause is its own Condition, since all of a Condition's requirements must be met.
+COVERAGE_REQUIREMENTS: dict[Benefit, tuple[str, ...]] = {
+    Benefit.TRIP_CANCELLATION: COVERED_CAUSES[Benefit.TRIP_CANCELLATION],
+    Benefit.FLIGHT_DELAY: ("scheduled flight", "as a passenger"),
+    Benefit.TRIP_CHANGE: COVERED_CAUSES[Benefit.TRIP_CHANGE],
+}
+
+
+class CostCategory(StrEnum):
+    """What a cost is for: a reimbursement Benefit pays some categories and not others."""
+
+    TOUR_FEE = "tour fee"
+    TRANSPORT = "transport"
+    LODGING = "lodging"
+    TICKETS = "tickets"
+    MEALS = "meals"
+    OTHER = "other"
+
+
+# The cost categories a reimbursement Benefit may pay, in the order of the
+# reference clauses: trip cancellation the prepaid tour fee, transport, lodging
+# and tickets that cannot be refunded; trip change the added transport or lodging.
+ELIGIBLE_COSTS: dict[Benefit, tuple[CostCategory, ...]] = {
+    Benefit.TRIP_CANCELLATION: (
+        CostCategory.TOUR_FEE,
+        CostCategory.TRANSPORT,
+        CostCategory.LODGING,
+        CostCategory.TICKETS,
+    ),
+    Benefit.TRIP_CHANGE: (CostCategory.TRANSPORT, CostCategory.LODGING),
 }
 
 # "Applies to" names Condition keys, Benefits, or this, for every Condition.
@@ -190,12 +261,16 @@ class Condition:
     covered_event: str
     coverage_requirements: tuple[str, ...]
     coverage_window: str | None
+    # How many days before the trip's departure a window like trip
+    # cancellation's opens; it closes when the overseas travel period begins.
+    window_days: int | None
     threshold_hours: float | None
     delay_period_rule: DelayPeriodRule | None
     benefit_type: BenefitType
     step_hours: float | None
     max_claims_per_period: int | None
     aggregate_limit_group: str | None
+    # Values from the Benefit's list in ELIGIBLE_COSTS.
     eligible_costs: tuple[str, ...]
     cost_maximums: str | None
     clause: ClauseRef

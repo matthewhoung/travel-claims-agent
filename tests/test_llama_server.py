@@ -16,16 +16,20 @@ from typing import Any
 import pytest
 
 from travel_claims.conditions import (
+    COVERED_CAUSES,
+    ELIGIBLE_COSTS,
     EXCLUSION_TYPES,
     Benefit,
     BenefitType,
     ClauseRef,
+    CostCategory,
     ExclusionType,
 )
 from travel_claims.llama_server import LlamaServerModels, MalformedAnswer
 from travel_claims.local_models import (
     ArrangedBy,
     ClauseRole,
+    Cost,
     ExtractedCondition,
     Extraction,
     ExtractionRequest,
@@ -161,6 +165,7 @@ def test_a_cover_clause_is_read_into_conditions_with_the_benefits_own_lists(
                     "covered_event": "定期航班延誤四小時以上",
                     "coverage_requirements": {"scheduled flight": True, "as a passenger": True},
                     "coverage_window": None,
+                    "window_days": None,
                     "threshold_hours": 4,
                     "benefit_type": "progressive fixed amount",
                     "step_hours": 4,
@@ -171,6 +176,7 @@ def test_a_cover_clause_is_read_into_conditions_with_the_benefits_own_lists(
                 }
             ],
             "exclusions": [],
+            "caps_period_total": False,
         }
     )
     context = (EXCLUSIONS,)
@@ -200,6 +206,74 @@ def test_a_cover_clause_is_read_into_conditions_with_the_benefits_own_lists(
     # The Clause and the rest of its chapter are in the prompt.
     assert COVER.text in stand_in.prompt()
     assert "第三十一條" in stand_in.prompt()
+
+
+def test_a_trip_cancellation_cover_clause_offers_its_covered_causes_window_and_eligible_costs(
+    stand_in: StandIn,
+) -> None:
+    cover = Clause(
+        number=27,
+        heading="旅程取消保險(實支實付)承保範圍",
+        chapter="第三章 個人海外旅行不便保險",
+        text="被保險人於特定期間內因下列情事致其必須取消預定之全部旅程……\n"
+        "一、被保險人、被保險人之配偶或三親等內親屬死亡或病危者。",
+        pages=(15, 15),
+    )
+    causes = COVERED_CAUSES[Benefit.TRIP_CANCELLATION]
+    stand_in.answers.append(
+        {
+            "conditions": [
+                {
+                    "label": "relative's death",
+                    "covered_event": "因親屬死亡或病危必須取消預定之全部旅程",
+                    "coverage_requirements": {cause: cause == causes[0] for cause in causes},
+                    "coverage_window": "自預定海外旅程開始前二十日起至海外旅行期間開始時止",
+                    "window_days": 20,
+                    "threshold_hours": None,
+                    "benefit_type": "reimbursement",
+                    "step_hours": None,
+                    "max_claims_per_period": None,
+                    "eligible_costs": ["tour fee", "lodging"],
+                    "cost_maximums": None,
+                    "item": "一",
+                }
+            ],
+            "exclusions": [],
+            "caps_period_total": True,
+        }
+    )
+
+    extraction = models_for(stand_in).extract(
+        ExtractionRequest(cover, ClauseRole.BENEFIT_COVER, Benefit.TRIP_CANCELLATION, ())
+    )
+
+    assert extraction == Extraction(
+        conditions=(
+            ExtractedCondition(
+                covered_event="因親屬死亡或病危必須取消預定之全部旅程",
+                coverage_requirements=(causes[0],),
+                threshold_hours=None,
+                benefit_type=BenefitType.REIMBURSEMENT,
+                step_hours=None,
+                max_claims_per_period=None,
+                label="relative's death",
+                coverage_window="自預定海外旅程開始前二十日起至海外旅行期間開始時止",
+                window_days=20,
+                eligible_costs=("tour fee", "lodging"),
+                item="一",
+            ),
+        ),
+        caps_period_total=True,
+    )
+    schema = stand_in.schema()["properties"]
+    condition = schema["conditions"]["items"]["properties"]
+    assert list(condition["coverage_requirements"]["properties"]) == list(causes)
+    assert condition["eligible_costs"]["items"]["enum"] == list(
+        ELIGIBLE_COSTS[Benefit.TRIP_CANCELLATION]
+    )
+    assert schema["caps_period_total"] == {"type": "boolean"}
+    # Each covered cause is described in the Clauses' words.
+    assert f"  - {causes[0]}: 被保險人、配偶或三親等內親屬死亡或病危" in stand_in.prompt()
 
 
 def test_an_exclusions_clause_is_offered_its_benefits_own_exclusion_types(
@@ -254,6 +328,10 @@ def incident(**fields: Any) -> dict[str, Any]:
         "replacements": [],
         "missed_connection": False,
         "stated_delay_minutes": None,
+        "event": None,
+        "event_day": None,
+        "during_trip": None,
+        "costs": [],
     } | fields
 
 
@@ -331,6 +409,46 @@ def test_a_scenario_with_times_but_no_dates_keeps_the_times_on_one_undated_day(
     assert (scheduled.hour, scheduled.minute, scheduled.utcoffset()) == (10, 0, timedelta(hours=8))
     assert scenario in stand_in.prompt()
     assert stand_in.schema()["properties"]["benefits"]["items"]["enum"] == list(Benefit)
+
+
+def test_a_trip_event_is_read_with_its_day_from_departure_and_the_costs_named(
+    stand_in: StandIn,
+) -> None:
+    stand_in.answers.append(
+        facts(
+            benefits=["trip change"],
+            incidents=[
+                incident(
+                    event="當地航空公司地勤罷工",
+                    event_day=3,
+                    during_trip=True,
+                    costs=[
+                        {"text": "多住一晚的飯店費用", "category": "lodging"},
+                        {"text": "多出來的餐費", "category": "meals"},
+                    ],
+                )
+            ],
+        )
+    )
+
+    read = models_for(stand_in).extract_facts("旅程第四天遇到罷工……")
+
+    assert read.incidents == (
+        Incident(
+            leg=None,
+            airport=None,
+            transport=None,
+            event="當地航空公司地勤罷工",
+            event_day=3,
+            during_trip=True,
+            costs=(
+                Cost("多住一晚的飯店費用", CostCategory.LODGING),
+                Cost("多出來的餐費", CostCategory.MEALS),
+            ),
+        ),
+    )
+    cost = stand_in.schema()["properties"]["incidents"]["items"]["properties"]["costs"]["items"]
+    assert cost["properties"]["category"]["enum"] == list(CostCategory)
 
 
 def test_dated_facts_are_read_in_taiwan_time_and_a_stated_delay_in_minutes(

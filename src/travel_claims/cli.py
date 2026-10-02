@@ -23,11 +23,11 @@ from travel_claims.app import (
 )
 from travel_claims.clause_store import ClauseStore
 from travel_claims.conditions import ClauseRef
-from travel_claims.judging import OutOfContract, Reason, Verdict, VerdictMatrix
+from travel_claims.judging import JUDGED, OutOfContract, Reason, Verdict, VerdictMatrix
 from travel_claims.llama_server import MalformedAnswer, configured_models
 from travel_claims.local_models import LocalModels
 from travel_claims.policies import Policy, Wording
-from travel_claims.report import describe_amount, describe_facts
+from travel_claims.report import describe_amount, describe_cost, describe_facts
 
 # The Clause store lives here unless --store says otherwise. Workbooks go to
 # _WORKBOOKS. Both are git-ignored: they hold the customer's text.
@@ -256,9 +256,18 @@ def _print_matrix(matrix: VerdictMatrix) -> None:
     print("Facts read from the Scenario:")
     for label, text in describe_facts(matrix.facts):
         print(f"  {label}: {text}" if label else f"    {text}")
+    if not matrix.cells:
+        judged = ", ".join(JUDGED[:-1]) + f" or {JUDGED[-1]}"
+        print()
+        print(
+            f"Not supported: {', '.join(matrix.not_supported) or 'no benefit stated'}. "
+            f"The Scenario touches no benefit that is judged: {judged}."
+        )
     for cell in matrix.cells:
         print()
         print(f"{cell.product}, {cell.wording} wording: {_verdict(cell.verdict, cell.reason)}")
+        if cell.not_supported:
+            print(f"  not supported: {', '.join(cell.not_supported)}")
         for outcome in cell.outcomes:
             print(
                 f"  {outcome.condition}, incident {outcome.incident}: "
@@ -267,6 +276,8 @@ def _print_matrix(matrix: VerdictMatrix) -> None:
             print(f"    {outcome.grounds}")
             for paid in outcome.amounts:
                 print(f"    {describe_amount(paid, outcome.steps)}")
+            for cost in outcome.costs:
+                print(f"    cost: {describe_cost(cost)}")
             for provision in outcome.turns_on:
                 for reading in provision.readings:
                     print(

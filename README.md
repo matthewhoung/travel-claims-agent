@@ -4,7 +4,7 @@ A local agent that turns travel-inconvenience insurance clauses (旅遊不便險
 
 It runs entirely on one laptop with an 8 GB GPU. No document, prompt, or trace leaves the machine.
 
-**Status:** the design is settled and the public corpus is collected. The code lists the policies in a clause PDF by rules, with no model. It imports a policy as a Product into a draft workbook for review, and checks the reviewed workbook. It judges a flight-delay Scenario against confirmed workbooks. Every model call goes through a local-models port, served on this machine by llama-server. On the real model, importing 享樂遊 twice gives identical extracted fields; the run that records the two example Scenarios' Verdicts follows the reviewer's confirmation of its workbook. The full specification is [issue #1](https://github.com/matthewhoung/travel-claims-agent/issues/1), and the [roadmap](#roadmap) shows what comes next.
+**Status:** the design is settled and the public corpus is collected. The code lists the policies in a clause PDF by rules, with no model. It imports a policy as a Product into a draft workbook for review, and checks the reviewed workbook. It judges flight-delay, trip-cancellation and trip-change Scenarios against confirmed workbooks, and lists any other benefit a Scenario touches as not supported. Every model call goes through a local-models port, served on this machine by llama-server. On the real model, importing 享樂遊 twice gives identical extracted fields; the run that records the two example Scenarios' Verdicts follows the reviewer's confirmation of its workbook. The full specification is [issue #1](https://github.com/matthewhoung/travel-claims-agent/issues/1), and the [roadmap](#roadmap) shows what comes next.
 
 ---
 
@@ -18,7 +18,7 @@ The actuary's working documents are unpublished drafts. They cannot go to a clou
 
 ## What it produces
 
-Both examples below were written by hand from the collected documents to show the intended output. The system produces the Verdict matrix, for flight delay in both wordings, and the Alignment table, for flight delay, baggage delay, baggage loss and loss of travel documents (see [Comparing Products](#comparing-products-the-alignment-table)).
+Both examples below were written by hand from the collected documents to show the intended output. The system produces the Verdict matrix, for flight delay, trip cancellation and trip change in both wordings, and the Alignment table, for all six benefits (see [Comparing Products](#comparing-products-the-alignment-table)).
 
 ### 1. Alignment table
 
@@ -307,7 +307,7 @@ uv run travel-claims import data/clauses/cathay/travel-bundle.new-wording.pdf \
   --policy 6 --product 享樂遊 --wording new
 ```
 
-The local models extract the Conditions and exclusions of flight delay, baggage delay, baggage loss and loss of travel documents, and the general provisions, into a draft workbook, `workbooks/享樂遊.new.xlsx`. Import never overwrites a workbook. All of the policy's Clauses go to the Clause store in `store/`, which later steps cite and judge from. `import` and `judge` reach the models through the router started by `scripts/serve_models.sh`, so start it first; `LLM_MODEL` in `.env` picks the model, `qwen3.5-9b` or `qwen3.5-4b`.
+The local models extract the Conditions and exclusions of the six benefits (trip cancellation, flight delay, trip change, baggage delay, baggage loss and loss of travel documents) and the general provisions, into a draft workbook, `workbooks/享樂遊.new.xlsx`. Import never overwrites a workbook. All of the policy's Clauses go to the Clause store in `store/`, which later steps cite and judge from. `import` and `judge` reach the models through the router started by `scripts/serve_models.sh`, so start it first; `LLM_MODEL` in `.env` picks the model, `qwen3.5-9b` or `qwen3.5-4b`.
 
 A reviewer checks the workbook in Excel, corrects it, and records who confirmed it and when above the Conditions table. On the Amounts sheet a person enters each Condition's Benefit amount per Plan, in whole NT$ (per step for a progressive benefit, the limit for a reimbursement), with its maximum per incident and its source, marking each row published, not published or not collected. A row that is not published or not collected may leave the Plan, the amounts and the source empty, and may name `all` for every Condition; a Condition with no row counts as not collected, and an empty Amounts sheet is accepted. Load then lists every problem at once, including a published amount without its source, Plan or amount, such as a missing field, a Clause reference that is not among the stored Clauses, an exclusion that applies to an unknown Condition key, or a missing confirmation record. It also counts how many extracted fields the reviewer changed:
 
@@ -319,7 +319,7 @@ uv run travel-claims load workbooks/享樂遊.new.xlsx
 2 problems:
 Conditions!B1: Confirmed by is missing
 Conditions!B2: Confirmed on is missing
-32 fields extracted, 0 changed by the reviewer.
+33 fields extracted, 0 changed by the reviewer.
 ```
 
 ### Judging a Scenario
@@ -365,7 +365,7 @@ When the outcome cannot be decided, the cell says why: the Scenario lacks a fact
       the exclusion applies: 被保險人未搭乘航空業者所提供之第一班替代交通工具。
 ```
 
-`--export verdicts.xlsx` also writes the Verdict matrix, the facts read, the per-Condition breakdown, with a row per reading, and the amount per Plan of each paid outcome to a new Excel file. Flight delay is judged so far, in both wordings.
+`--export verdicts.xlsx` also writes the Verdict matrix, the facts read, the per-Condition breakdown, with a row per reading, and the amount per Plan of each paid outcome to a new Excel file.
 
 ### Old and new wording side by side
 
@@ -400,6 +400,41 @@ The old wording measures a flight delay differently: when force majeure (不可�
 ```
 
 A threshold not met, or an exclusion that applies, decides the outcome only when it holds under every reading. Load requires an old-wording Condition to have a first-replacement exclusion with its proviso, since the delay-period rule takes its readings from it.
+
+### Trip cancellation and trip change
+
+Both reimburse costs, and both list the causes they cover. Import drafts one Condition per covered cause, such as `trip cancellation / relative's death`, whose coverage requirement is that cause: the local models judge it, and it can come back Cause ambiguous. Each Condition records its eligible cost categories (tour fee, transport, lodging and tickets for trip cancellation; transport and lodging for trip change) and its cost maximums. Where a Benefit's own Clause caps the total paid in the policy period (保險期間內賠付金額之加總以保險金額為限, as the new wording does), import puts its Conditions in one Aggregate limit group.
+
+The facts read give the event that made the insured cancel or change the trip, the day it happened counted from departure, and any costs named, each with its category. Code checks the windows: trip cancellation from a number of days before departure (7 in the old wording, 20 in the new, from the workbook's Window column) until the overseas travel period begins; trip change within the overseas travel period. A relative's death 10 days before departure:
+
+```
+享樂遊, old wording: not paid
+  trip cancellation / relative's death, incident 1: not paid (第二十七條 一)
+    the event, 10 days before departure, is outside the window from 7 days before departure to the start of the overseas travel period
+
+享樂遊, new wording: paid
+  trip cancellation / relative's death, incident 1: paid (第二十七條 一)
+    reimburses tour fee, transport, lodging, tickets
+  trip cancellation / strike, incident 1: not paid (第二十七條 三)
+    outside the covered event: 因預定搭乘之公共交通工具業者之受僱人罷工致班次取消或延誤二十四小時以上，必須取消預定之全部旅程
+```
+
+A paid reimbursement shows the limit per Plan and the eligible cost categories, and marks each cost the Scenario names eligible or not, citing the Clause. Costs are never required, and no reimbursed amount is computed. A benefit that is not judged (baggage delay, baggage loss, loss of travel documents) is listed in each cell as not supported and left out of the cell's Verdict; a Scenario that touches none of the judged benefits gets only that notice. A strike on the trip, with a baggage delay too:
+
+```
+享樂遊, new wording: paid
+  not supported: baggage delay
+  trip change / strike, incident 1: paid (第三十三條 一)
+    reimburses transport, lodging
+    安心型(T5): limit NT$60,000 (source: https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/)
+    海外豪華型(U3): limit NT$120,000 (source: https://www.cathay-ins.com.tw/cathayins/personal/travel/oversea/)
+    cost: 多住一晚的飯店費用 (lodging): eligible, 第三十三條 一
+    cost: 多出來的餐費 (meals): not eligible, 第三十三條 一
+  trip change / relative's death, incident 1: not paid (第三十三條 三)
+    outside the covered event: 因居住於中華民國境內之配偶或三親等內親屬死亡或病危，必須更改預定旅程
+```
+
+The export carries the benefits not supported, and each outcome's eligible costs and the costs named.
 
 ### Comparing Products: the Alignment table
 

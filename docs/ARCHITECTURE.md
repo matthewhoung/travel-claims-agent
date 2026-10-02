@@ -2,7 +2,7 @@
 
 This document explains how the system is put together and why. The [README](../README.md) covers what it is for, [DISCOVERY.md](DISCOVERY.md) covers where the requirements came from, and [CONTEXT.md](../CONTEXT.md) defines the terms used here (Clause, Condition, Alignment, Overlap, Verdict and others).
 
-Implemented so far: splitting documents into Clauses (section 3.1), importing a Product into a draft workbook and loading the reviewed workbook (section 3.2), judging a flight delay in the new wording, with undetermined outcomes and export to Excel (section 3.4, without retrieval), and the local model runtime (section 4). Import and judging go through the local-models port, served by llama-server (section 4.6); retrieval is not served yet.
+Implemented so far: splitting documents into Clauses (section 3.1), importing a Product into a draft workbook and loading the reviewed workbook (section 3.2), judging flight delay, trip cancellation and trip change in both wordings, with undetermined outcomes, benefits not supported and export to Excel (section 3.4, without retrieval), and the local model runtime (section 4). Import and judging go through the local-models port, served by llama-server (section 4.6); retrieval is not served yet.
 
 ## 1. Constraints
 
@@ -79,15 +79,16 @@ The workbook is the contract between the model and everything after it. It has t
 | Product, Wording version | Cathay Century 享樂遊, new |
 | Benefit | flight delay |
 | Covered event | scheduled flight departs late |
-| Coverage requirements | scheduled flight; as a passenger (values from a fixed list per Benefit) |
+| Coverage requirements | scheduled flight; as a passenger (values from a fixed list per Benefit; for trip cancellation and trip change, the one covered cause of the Condition) |
 | Coverage window | the policy period, as the policy-period Clauses state it |
+| Window (days before departure) | 20, for trip cancellation: the window opens that many days before departure |
 | Threshold (hours) | 4 |
 | Delay-period rule | new-wording rule |
 | Benefit type | progressive fixed amount, one-off fixed amount, or reimbursement |
 | Step (hours) | 4, that is for each full 4 hours |
 | Maximum claims per period | 2 |
 | Aggregate limit group | the Conditions that share one limit, if a Clause states one |
-| Eligible costs, cost maximums | for a reimbursement Condition |
+| Eligible costs, cost maximums | for a reimbursement Condition: categories from a fixed list per Benefit, and the Clause's limits on them |
 | Clause reference | 第三十條 |
 
 **Exclusions**, one row per excluded item, filled by extraction:
@@ -117,12 +118,13 @@ Exclusions get their own sheet because each one is judged and cited separately, 
 
 Amounts are entered by hand because clauses do not contain them and insurers publish them in incompatible layouts. For the public corpus they come from `data/amounts.csv`. Amounts for old wordings are no longer published, so those cells stay empty instead of borrowing current amounts.
 
-**Import** fills the Conditions and Exclusions sheets. It extracts from the general provisions (definitions, general exclusions and the policy period) and from the Clauses of each extracted Benefit: so far flight delay, the others following as they are judged or aligned. Every Clause goes to the model with the other Clauses of its chapter as context. The rest of the policy is stored and indexed but not extracted. Code, not the model, fills what follows from where a Clause sits:
+**Import** fills the Conditions and Exclusions sheets. It extracts from the general provisions (definitions, general exclusions and the policy period) and from the Clauses of each of the six Benefits. Every Clause goes to the model with the other Clauses of its chapter as context. The rest of the policy is stored and indexed but not extracted. Code, not the model, fills what follows from where a Clause sits:
 
 - The Condition key is the Benefit, plus a short covered-event label from extraction when a Benefit has several Conditions (trip cancellation / strike). A key that would repeat, or would be the bare name of a Benefit with several Conditions (which "applies to" reads as all of them), is numbered in Clause order, so the same extraction always gives the same keys.
 - An exclusion in a Benefit's own exclusion Clause applies to that Benefit's Conditions; a general exclusion (共同不保事項) applies to all. The reviewer only narrows.
 - The coverage window is the policy period as its Clauses state it, unless the Condition's own Clause names another window.
 - The delay-period rule defaults from the Wording version.
+- A Benefit that lists covered causes (trip cancellation, trip change) has a Condition per cause, since every requirement of a Condition must be met. Where a reimbursement Benefit's own Clause caps the total paid in the policy period and it has several Conditions, they are put in one Aggregate limit group, named after the Benefit.
 
 The policy's Clauses go to the Clause store, a SQLite file, keyed by Product, Wording version and Clause number. A re-import of the same Product and Wording version replaces them, and never overwrites a workbook.
 
@@ -170,6 +172,8 @@ Who decides what:
 | Overlap | code | two or more Conditions paid for the same event in one Product; marked as resolved when they share an Aggregate limit |
 
 Only a provision the workbook marks as concerning the Cause (an exclusion, and with it its proviso), or a covered-cause requirement, may be judged as turning on the Cause. The confirmed workbook, not the model, says which provisions those are, so the request tells the adapter and it constrains its output schema to match. An answer that breaks this anyway is refused as out of contract: judging stops with an error naming the provision, rather than reporting a reason the workbook does not support. A proviso is judged only when its exclusion may apply, and when it applies it lifts the exclusion.
+
+For trip cancellation, code checks that the event falls in the window from the Condition's days before departure until the overseas travel period begins; for trip change, that it happened during the overseas travel period. Either is not paid when the Scenario states the trip is outside the policy period. A covered cause is a covered-cause requirement, judged by the model, and may turn on the Cause. A paid reimbursement shows the limit per Plan and the eligible cost categories, and code marks each cost the Scenario names eligible when its category is one the Clause lists. No reimbursed amount is computed. Benefits not judged (baggage delay, baggage loss, loss of travel documents) are listed in each cell as not supported and left out of its Verdict; a Scenario with no judged benefit gets only that notice.
 
 In the old wording, the rule for measuring a flight delay has a force-majeure proviso: the delay runs to the next replacement flight if force majeure prevented taking the first. Code measures the delay under both readings, so the hours themselves can make an outcome Cause ambiguous.
 

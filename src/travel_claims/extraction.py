@@ -7,12 +7,13 @@ policy's other Clauses are stored and indexed but not extracted.
 
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from travel_claims.conditions import (
     ALL,
     BENEFIT_NAMES,
     Benefit,
+    BenefitType,
     ClauseRef,
     Condition,
     DelayPeriodRule,
@@ -27,11 +28,13 @@ from travel_claims.local_models import (
 )
 from travel_claims.policies import Clause, Wording
 
-# Flight delay is judged. Baggage delay, baggage loss and loss of travel
-# documents are extracted for the Alignment table only. The other Benefits are
-# extracted once they are judged.
+# Trip cancellation, flight delay and trip change are judged. Baggage delay,
+# baggage loss and loss of travel documents are extracted for the Alignment
+# table only.
 _EXTRACTED_BENEFITS = (
+    Benefit.TRIP_CANCELLATION,
     Benefit.FLIGHT_DELAY,
+    Benefit.TRIP_CHANGE,
     Benefit.BAGGAGE_DELAY,
     Benefit.BAGGAGE_LOSS,
     Benefit.TRAVEL_DOCUMENT_LOSS,
@@ -117,7 +120,7 @@ def _conditions(
         for condition in e.extraction.conditions
     ]
     keys = _keys([(benefit, condition.label) for benefit, _, condition in found])
-    return [
+    conditions = [
         Condition(
             key=key,
             product=product,
@@ -126,6 +129,7 @@ def _conditions(
             covered_event=condition.covered_event,
             coverage_requirements=condition.coverage_requirements,
             coverage_window=condition.coverage_window or policy_period,
+            window_days=condition.window_days,
             threshold_hours=condition.threshold_hours,
             delay_period_rule=(
                 DelayPeriodRule.of(wording) if benefit is Benefit.FLIGHT_DELAY else None
@@ -140,6 +144,28 @@ def _conditions(
         )
         for key, (benefit, clause, condition) in zip(keys, found, strict=True)
     ]
+    capped = {e.benefit for e in extracted if e.extraction.caps_period_total}
+    return [
+        replace(c, aggregate_limit_group=str(c.benefit))
+        if c.benefit in _grouped(conditions, capped)
+        else c
+        for c in conditions
+    ]
+
+
+def _grouped(conditions: list[Condition], capped: set[Benefit | None]) -> set[Benefit]:
+    """The Benefits whose Conditions share one Aggregate limit: those whose own Clause caps
+    the total reimbursed in the policy period, and that have several Conditions to share it."""
+    reimbursed = Counter(
+        c.benefit for c in conditions if c.benefit_type is BenefitType.REIMBURSEMENT
+    )
+    return {
+        benefit
+        for benefit, count in reimbursed.items()
+        if benefit in capped
+        and count > 1
+        and count == sum(c.benefit is benefit for c in conditions)
+    }
 
 
 def _keys(labelled: list[tuple[Benefit, str | None]]) -> list[str]:

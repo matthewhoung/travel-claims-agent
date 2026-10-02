@@ -20,10 +20,12 @@ from typing import Any, Self
 from travel_claims.conditions import (
     BENEFIT_NAMES,
     COVERAGE_REQUIREMENTS,
+    ELIGIBLE_COSTS,
     EXCLUSION_TYPES,
     Benefit,
     BenefitType,
     ClauseRef,
+    CostCategory,
     ExclusionType,
 )
 from travel_claims.local_models import (
@@ -31,6 +33,7 @@ from travel_claims.local_models import (
     UNDATED_DAYS,
     ArrangedBy,
     ClauseRole,
+    Cost,
     ExtractedCondition,
     ExtractedExclusion,
     Extraction,
@@ -121,6 +124,11 @@ class LlamaServerModels:
                 types="\n".join(
                     f"  - {t}: {_TYPE_DESCRIPTIONS[t]}" for t in _exclusion_types(request.benefit)
                 ),
+                requirements="\n".join(
+                    f"  - {r}: {_REQUIREMENT_DESCRIPTIONS[r]}"
+                    for r in _own(COVERAGE_REQUIREMENTS, request.benefit)
+                ),
+                costs=", ".join(_own(ELIGIBLE_COSTS, request.benefit)) or "the Clause's words",
             ),
             _clause_prompt(request.clause, request.context),
             f"extraction_{role.name.lower()}",
@@ -136,6 +144,7 @@ class LlamaServerModels:
             _FACTS_SYSTEM.format(
                 year=self.year,
                 benefits="\n".join(f"  - {b}: {name}" for name, b in BENEFIT_NAMES.items()),
+                categories=", ".join(f"{c} ({_COST_NAMES[c]})" for c in CostCategory),
             ),
             f"The Scenario:\n{scenario}",
             "scenario_facts",
@@ -313,6 +322,17 @@ _TYPE_DESCRIPTIONS = {
     ExclusionType.NOT_REPORTED_TO_POLICE: (
         "被保險人未於保險事故發生後二十四小時內向警方報案並取得報案證明"
     ),
+    ExclusionType.REFUNDABLE: (
+        "可由旅館業者、交通工具業者、旅行社或其他業者處獲得之退款，或以代金、點數、哩程數等"
+        "非貨幣形式償還之等值金額"
+    ),
+    ExclusionType.LAW_OR_GOVERNMENT_ORDER: "直接或間接因法令、政府命令所致之損失",
+    ExclusionType.AGENCY_OR_CARRIER_INSOLVENCY: "旅行社或公共交通工具業者破產、清算或債務不履行",
+    ExclusionType.OCCURRED_AT_PURCHASE: "要保人申請訂立保險契約時已發生之事故",
+    ExclusionType.LATE_NOTICE: (
+        "發生保險事故後，被保險人怠於通知或未及時通知旅行社、安排旅行之人或提供旅行、住宿之業者"
+    ),
+    ExclusionType.COSTS_IN_TAIWAN: "中華民國境內之住宿及交通費用",
     ExclusionType.OTHER: "any other exclusion",
 }
 
@@ -325,23 +345,33 @@ counts as one incident, belongs to a Condition and is not a Condition itself.
 - label: null when the Clause states one Condition, as most do. Only when it \
 states several, a short English label telling each apart, such as "strike".
 - covered_event: the covered event, condensed in Chinese from the Clause's own words.
-- coverage_requirements: for each requirement, whether the Clause states it.
+- coverage_requirements: for each requirement, whether the Clause states it:
+{requirements}
+A Clause that lists the causes it covers (下列情事, 下列事故) states one \
+Condition per cause: give each cause its own Condition, label and item, with \
+that cause alone as its requirement. An item naming several causes gives a \
+Condition for each.
 - coverage_window: null when the event is covered within the policy period \
 (保險期間內), as most are; otherwise the other window the Clause states, such as \
-a number of days before departure.
+a number of days before departure or the overseas travel period (海外旅行期間內).
+- window_days: when the window opens a number of days before the trip's \
+departure, as in 預定海外旅程開始前二十日, that number; null otherwise.
 - threshold_hours: the least delay, in hours, that is paid; null if none.
 - benefit_type: progressive fixed amount when a fixed amount is paid for each \
 full step of hours; one-off fixed amount when a fixed amount is paid once; \
 reimbursement when costs are reimbursed.
 - step_hours: the hours of one step of a progressive benefit; null otherwise.
 - max_claims_per_period: the most payments in the policy period; null if not stated.
-- eligible_costs and cost_maximums: for a reimbursement, the costs it pays \
-and their maximums; empty and null otherwise.
+- eligible_costs: for a reimbursement, the categories of cost it pays, from: \
+{costs}; empty otherwise. cost_maximums: the limits the Clause sets on those \
+costs, condensed in its own words; null if none.
 - item: null when the Clause's opening paragraphs state the Condition, as \
 most do. Only when a numbered item (一、 二、) itself states a covered event, \
 that item's numeral. Items that measure a delay or define one incident do not \
 state a Condition.
 List no exclusions unless this Clause itself excludes something.
+caps_period_total: whether the Clause caps the total paid in the policy period, \
+as in 保險期間內賠付金額之加總以保險金額為限.
 """,
     ClauseRole.BENEFIT_EXCLUSIONS: "This Clause lists the exclusions (不保事項) of the "
     "{benefit} benefit.\n" + _EXCLUSION_RULES,
@@ -386,6 +416,17 @@ within (保險期間內) or outside the policy period without giving its dates.
 - in_force_at_purchase: warnings or strikes the Scenario says were in force \
 when the policy was bought, such as 海上颱風警報.
 - earlier_claims: claims already paid in the policy period, if stated.
+For trip cancellation (旅程取消) and trip change (旅程更改), an incident is the \
+event that made the insured cancel or change the trip, and its flight fields \
+are null unless a flight is part of it:
+- event: what happened, in the Scenario's words.
+- event_day: the day it happened, counted from the trip's departure day: -10 \
+ten days before (出發前十天), 0 the departure day, 2 two days after; null unless \
+the Scenario gives it.
+- during_trip: whether it happened during the overseas trip, after the insured \
+left; null unless the Scenario says.
+- costs: each cost the Scenario names, in its words, with its category, one \
+of: {categories}.
 A time is a date, a day and a time of day. date: YYYY-MM-DD when the Scenario \
 gives the date, with the year {year} if it gives none; otherwise null, and day \
 is the number of days after the booked flight's day (0 the same day, 1 the \
@@ -423,9 +464,10 @@ offered. Every flight in the facts is a scheduled flight the insured \
 travelled on as a passenger, unless they say otherwise.
 - "In force at purchase" lists what was in force when the policy was applied \
 for (投保時, 申請訂立保險契約時); when it lists none, nothing was.
-- Code has already measured the delay and found it meets the threshold, and \
-that the trip is within the policy period. Take hours, thresholds and dates \
-as met; never ask for a time or a duration.
+- Code has already checked the hours against any threshold, and the dates \
+against the policy period and any other window, such as the days before \
+departure in which a trip may be cancelled. Take hours, thresholds, dates and \
+windows as met; never ask for a time, a date or a duration.
 """
 
 _ANSWER_MEANINGS = {
@@ -465,10 +507,47 @@ as 不可抗力 and 非不可抗力, and whether the provision is met under it.
 """
 
 
-# What each coverage requirement means, in the Clauses' words.
+# What each coverage requirement means, in the Clauses' words. A covered cause
+# is what made the insured cancel or change the trip.
 _REQUIREMENT_DESCRIPTIONS = {
     "scheduled flight": "the delayed flight is a scheduled flight (定期航班)",
     "as a passenger": "the insured travels as a passenger (以乘客身分)",
+    "death or critical illness of the insured or a relative": (
+        "被保險人、配偶或三親等內親屬死亡或病危"
+    ),
+    "witness in a court case in Taiwan": "被保險人須於中華民國境內擔任訴訟之證人",
+    "strike cancelling or delaying the booked transport": (
+        "預定搭乘之公共交通工具業者之受僱人或機場之地勤、運務人員罷工，致所預定搭乘之班次"
+        "取消或延誤達二十四小時以上"
+    ),
+    "riot or civil commotion at the destination": "預定前往之地點發生暴動、民眾騷擾",
+    "home damaged by fire or natural disaster": (
+        "在中華民國境內住居所之建築物及其內之動產因火災、洪水、地震、颱風或其他天災毀損，"
+        "且損失金額超過新臺幣二十五萬元"
+    ),
+    "strike of the booked transport": (
+        "預定搭乘之公共交通工具業者之受僱人或機場之地勤、運務人員罷工"
+    ),
+    "war, riot or natural disaster where the insured is or is going": (
+        "被保險人在海外所處地點或預定前往地點發生戰爭、暴動、民眾騷擾或天災"
+    ),
+    "death or critical illness of a spouse or relative in Taiwan": (
+        "居住於中華民國境內之被保險人配偶或三親等內親屬死亡或病危"
+    ),
+    "travel documents robbed, stolen or lost": "本次旅程所使用之旅行文件被強盜、搶奪、竊盜或遺失",
+    "accident of the transport taken": (
+        "搭乘之汽車、火車、航空器或輪船發生沉沒、翻覆、碰撞、出軌、墜落、爆炸、火災等意外事故"
+    ),
+}
+
+# Each cost category in the Clauses' words.
+_COST_NAMES = {
+    CostCategory.TOUR_FEE: "團費",
+    CostCategory.TRANSPORT: "交通",
+    CostCategory.LODGING: "住宿",
+    CostCategory.TICKETS: "票券",
+    CostCategory.MEALS: "餐費",
+    CostCategory.OTHER: "其他",
 }
 
 
@@ -546,6 +625,8 @@ _MOST_COSTS = 10
 _MOST_INCIDENTS = 10
 _MOST_REPLACEMENTS = 10
 _MOST_IN_FORCE = 10
+# A trip-cancellation window opens at most this many days before departure.
+_MOST_DAYS = 366
 _ITEM = _nullable({"type": "string", "pattern": "^[一二三四五六七八九十]+$"})
 
 
@@ -593,6 +674,15 @@ _FACTS_SCHEMA = _object(
                     ),
                     "missed_connection": {"type": "boolean"},
                     "stated_delay_minutes": _nullable({"type": "integer", "minimum": 0}),
+                    "event": _nullable(_TEXT),
+                    "event_day": _nullable(
+                        {"type": "integer", "minimum": -_MOST_DAYS, "maximum": _MOST_DAYS}
+                    ),
+                    "during_trip": _nullable({"type": "boolean"}),
+                    "costs": _array(
+                        _object({"text": _TEXT, "category": {"enum": list(CostCategory)}}),
+                        _MOST_COSTS,
+                    ),
                 }
             ),
             _MOST_INCIDENTS,
@@ -704,10 +794,14 @@ def _excludes(provision: Provision) -> bool:
     return provision.kind in (ProvisionKind.EXCLUSION, ProvisionKind.PROVISO)
 
 
+def _own[T](lists: Mapping[Benefit, tuple[T, ...]], benefit: Benefit | None) -> tuple[T, ...]:
+    """A Benefit's own list; empty for a general Clause, which belongs to no Benefit."""
+    return lists.get(benefit, ()) if benefit is not None else ()
+
+
 def _exclusion_types(benefit: Benefit | None) -> list[ExclusionType]:
     """A Benefit's own exclusion types, then other; only other for a general Clause."""
-    own = EXCLUSION_TYPES.get(benefit, ()) if benefit is not None else ()
-    return [*own, ExclusionType.OTHER]
+    return [*_own(EXCLUSION_TYPES, benefit), ExclusionType.OTHER]
 
 
 def _extraction_schema(role: ClauseRole, benefit: Benefit | None) -> dict[str, Any]:
@@ -739,16 +833,26 @@ def _extraction_schema(role: ClauseRole, benefit: Benefit | None) -> dict[str, A
                 {r: {"type": "boolean"} for r in COVERAGE_REQUIREMENTS.get(benefit, ())}
             ),
             "coverage_window": _nullable(_TEXT),
+            "window_days": _nullable({"type": "integer", "minimum": 0, "maximum": _MOST_DAYS}),
             "threshold_hours": hours,
             "benefit_type": {"enum": [str(t) for t in BenefitType]},
             "step_hours": hours,
             "max_claims_per_period": _nullable({"type": "integer"}),
-            "eligible_costs": _array(_TEXT, _MOST_COSTS),
+            "eligible_costs": _array(
+                {"enum": list(ELIGIBLE_COSTS[benefit])} if benefit in ELIGIBLE_COSTS else _TEXT,
+                _MOST_COSTS,
+            ),
             "cost_maximums": _nullable(_TEXT),
             "item": _ITEM,
         }
     )
-    return _object({"conditions": _array(condition, _MOST_CONDITIONS), "exclusions": exclusions})
+    return _object(
+        {
+            "conditions": _array(condition, _MOST_CONDITIONS),
+            "exclusions": exclusions,
+            "caps_period_total": {"type": "boolean"},
+        }
+    )
 
 
 # Reading answers --------------------------------------------------------------------
@@ -759,6 +863,7 @@ def _extraction(answer: dict[str, Any]) -> Extraction:
         conditions=tuple(_condition(c) for c in answer.get("conditions", ())),
         exclusions=tuple(_exclusion(e) for e in answer.get("exclusions", ())),
         policy_period=answer.get("policy_period"),
+        caps_period_total=answer.get("caps_period_total", False),
     )
 
 
@@ -774,6 +879,7 @@ def _condition(answer: dict[str, Any]) -> ExtractedCondition:
         max_claims_per_period=answer["max_claims_per_period"],
         label=answer["label"],
         coverage_window=answer["coverage_window"],
+        window_days=answer["window_days"],
         eligible_costs=tuple(answer["eligible_costs"]),
         cost_maximums=answer["cost_maximums"],
         item=answer["item"],
@@ -831,6 +937,10 @@ def _incident(answer: dict[str, Any]) -> Incident:
         ),
         missed_connection=answer["missed_connection"],
         stated_delay=None if minutes is None else timedelta(minutes=minutes),
+        event=answer["event"],
+        event_day=answer["event_day"],
+        during_trip=answer["during_trip"],
+        costs=tuple(Cost(c["text"], CostCategory(c["category"])) for c in answer["costs"]),
     )
 
 
