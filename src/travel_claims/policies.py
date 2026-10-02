@@ -35,6 +35,12 @@ class Policy:
     # person confirms the Wording version at import.
     suggested_wording: Wording | None
     clauses: tuple[Clause, ...]
+    # A rider (附加條款, 附約) restarts its own numbering and is listed on its
+    # own, labelled with the policies of the document it attaches to: those
+    # its name extends, or else those its first Clause names. None found when
+    # it names no policy of the document.
+    is_rider: bool = False
+    parents: tuple[str, ...] = ()
 
     @property
     def clause_numbers(self) -> tuple[int, ...]:

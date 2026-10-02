@@ -10,20 +10,27 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import TypedDict
+from typing import Final, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from travel_claims.clause_store import ClauseStore
 from travel_claims.conditions import (
-    ALL,
     COVERED_CAUSES,
     Benefit,
     BenefitType,
     ClauseRef,
     Condition,
+    DelayPeriodRule,
+    ExclusionType,
 )
-from travel_claims.delay_period import MissingFact, NothingCounts, measure
+from travel_claims.delay_period import (
+    FORCE_MAJEURE_RULE,
+    Measured,
+    MissingFact,
+    NothingCounts,
+    measure,
+)
 from travel_claims.loading import ConditionTable
 from travel_claims.local_models import (
     Incident,
@@ -68,13 +75,21 @@ class ReadingOutcome:
     grounds: str
     clause: ClauseRef
     reason: Reason | None = None
+    # The delay period under this reading, when code measured one.
+    delay: timedelta | None = None
+
+
+# The old wording's delay-period rule turns on the Cause with the proviso it
+# shares with the first-replacement exclusion. Code measures it under each of
+# the proviso's readings; the local models never judge it.
+DELAY_PERIOD_RULE: Final = "delay-period rule"
 
 
 @dataclass(frozen=True)
 class TurningProvision:
     """A provision whose judgement turns on the Cause, with the outcome under each reading."""
 
-    kind: ProvisionKind
+    kind: ProvisionKind | Literal["delay-period rule"]
     text: str
     clause: ClauseRef
     readings: tuple[ReadingOutcome, ...]
@@ -94,7 +109,7 @@ class ConditionOutcome:
     # the Clauses leave unaddressed.
     grounds: str
     clause: ClauseRef
-    # The delay period, when code measured one.
+    # The delay period, when code measured one and it is the same under every reading.
     delay: timedelta | None = None
     # Full steps of a progressive benefit that is paid.
     steps: int | None = None
@@ -162,6 +177,9 @@ class _ConditionIncident:
     condition: Condition
     incident: int
     delay: timedelta | None = None
+    # By the old-wording rule, the delay period if force majeure prevented the
+    # insured from taking the first replacement flight, when it differs from `delay`.
+    force_majeure_delay: Measured | None = None
     # Facts the threshold or a window needs that the Scenario does not state.
     missing: tuple[str, ...] = ()
     # A threshold or window that code found not met, and its Clause.
@@ -175,6 +193,9 @@ class _Judged:
     judgement: Judgement
     # An exclusion's proviso, judged unless the exclusion surely does not apply.
     proviso: "_Judged | None" = None
+    # Whether this is the first-replacement exclusion, whose proviso the
+    # old-wording delay-period rule shares.
+    force_majeure: bool = False
 
 
 class _State(TypedDict, total=False):
@@ -211,14 +232,18 @@ def _check(state: _State) -> _State:
     for item in state["items"]:
         condition = item.condition
         incident = facts.incidents[item.incident - 1]
-        assert condition.delay_period_rule is not None  # Load requires it of a flight delay
-        delay = measure(incident, condition.delay_period_rule, policy_ends)
+        rule = condition.delay_period_rule
+        assert rule is not None  # Load requires it of a flight delay
+        delay = measure(incident, rule, policy_ends)
         if isinstance(delay, timedelta):
             item = replace(item, delay=delay)
+        if rule is DelayPeriodRule.OLD:
+            force_majeure = measure(incident, rule, policy_ends, force_majeure=True)
+            if force_majeure != delay:
+                item = replace(item, force_majeure_delay=force_majeure)
         missing = _missing_for_window(facts, incident)
         if isinstance(delay, MissingFact) and delay.fact not in missing:
             missing.append(delay.fact)
-        threshold = timedelta(hours=condition.threshold_hours or 0)
         if missing:
             item = replace(item, missing=tuple(missing))
         elif (window := _outside_policy_period(facts, incident)) is not None:
@@ -231,19 +256,39 @@ def _check(state: _State) -> _State:
                     condition.clause,
                 ),
             )
-        elif isinstance(delay, timedelta) and delay < threshold:
-            item = replace(
-                item,
-                not_met=(
-                    (
-                        f"a delay of {_duration(delay)}, under the threshold of "
-                        f"{condition.threshold_hours:g} hours"
-                    ),
-                    condition.clause,
-                ),
+        elif isinstance(delay, timedelta) and all(
+            _under_threshold(d, condition)
+            for d in (delay, item.force_majeure_delay)
+            if d is not None
+        ):
+            # Under the threshold under every reading of the Cause.
+            readings = item.force_majeure_delay
+            under = _threshold_not_met(
+                condition, delay, readings if isinstance(readings, timedelta) else None
             )
+            item = replace(item, not_met=(under, condition.clause))
         checked.append(item)
     return {"items": tuple(checked)}
+
+
+def _under_threshold(delay: Measured, condition: Condition) -> bool:
+    if isinstance(delay, NothingCounts):
+        return True
+    threshold = timedelta(hours=condition.threshold_hours or 0)
+    return isinstance(delay, timedelta) and delay < threshold
+
+
+def _threshold_not_met(
+    condition: Condition, delay: timedelta, force_majeure_delay: timedelta | None = None
+) -> str:
+    """Why the threshold is not met: under `delay`, and under `force_majeure_delay` if given."""
+    measured = f"a delay of {_duration(delay)}"
+    if force_majeure_delay is not None:
+        measured += (
+            f", or {_duration(force_majeure_delay)} if force majeure prevented taking "
+            "the first replacement flight"
+        )
+    return f"{measured}, under the threshold of {condition.threshold_hours:g} hours"
 
 
 def _missing_for_window(facts: ScenarioFacts, incident: Incident) -> list[str]:
@@ -292,8 +337,10 @@ def _judge(state: _State, store: ClauseStore, models: LocalModels) -> _State:
             for provision in _coverage(item.condition)
         ]
         if not any(_settled(j.judgement, met=False) for j in judgements):
-            for exclusion, proviso in _exclusions(item):
-                judged_exclusion = _ask(models, exclusion, incident_facts, clauses)
+            for exclusion, proviso, force_majeure in _exclusions(item):
+                judged_exclusion = replace(
+                    _ask(models, exclusion, incident_facts, clauses), force_majeure=force_majeure
+                )
                 if proviso is not None and not _settled(judged_exclusion.judgement, met=False):
                     judged_exclusion = replace(
                         judged_exclusion, proviso=_ask(models, proviso, incident_facts, clauses)
@@ -335,19 +382,31 @@ def _coverage(condition: Condition) -> list[Provision]:
     return [event, *requirements]
 
 
-def _exclusions(item: _ConditionIncident) -> list[tuple[Provision, Provision | None]]:
+def _exclusions(item: _ConditionIncident) -> list[tuple[Provision, Provision | None, bool]]:
     """The exclusions that apply to the Condition, by its key, its Benefit, or all, each
-    with its proviso. A proviso concerns the Cause when its exclusion does."""
-    names = {item.condition.key, str(item.condition.benefit), ALL}
+    with its proviso. A proviso concerns the Cause when its exclusion does.
+
+    Each is marked if it is the first exclusion of the first-replacement type
+    with a proviso, whose proviso the old-wording delay-period rule shares.
+    """
+    found = [e for e in item.table.exclusions if e.applies_to_condition(item.condition)]
+    shared = next(
+        (
+            e
+            for e in found
+            if e.type is ExclusionType.FIRST_REPLACEMENT_NOT_TAKEN and e.proviso is not None
+        ),
+        None,
+    )
     return [
         (
             Provision(ProvisionKind.EXCLUSION, e.text, e.clause, e.concerns_cause),
             None
             if e.proviso is None
             else Provision(ProvisionKind.PROVISO, e.proviso, e.clause, e.concerns_cause),
+            e is shared,
         )
-        for e in item.table.exclusions
-        if names.intersection(e.applies_to)
+        for e in found
     ]
 
 
@@ -370,15 +429,18 @@ def _outcome(state: _State) -> _State:
 
 def _condition_outcome(item: _ConditionIncident) -> ConditionOutcome:
     """The outcome order, steps 1 and 2 as far as code checks them; the rest by judgements."""
+    # Nothing is judged yet: the delay period is open while it turns on the proviso.
+    delay = _delay(item, ())
     if item.missing:
         return _undetermined(
             item,
             Reason.MISSING_FACT,
             f"the Scenario does not state {'; '.join(item.missing)}",
             item.condition.clause,
+            delay,
         )
     if item.not_met is not None:
-        return _not_paid(item, *item.not_met)
+        return _not_paid(item, *item.not_met, delay)
     return _from_judgements(item, item.judgements)
 
 
@@ -395,15 +457,35 @@ class _Open:
 def _from_judgements(item: _ConditionIncident, judged: tuple[_Judged, ...]) -> ConditionOutcome:
     """The outcome order from step 2 on: a covered event or requirement not met; an
     exclusion that applies; a judgement that needs a fact; one that turns on the Cause;
-    one the Clause text does not settle; otherwise paid."""
+    one the Clause text does not settle; otherwise paid.
+
+    While the delay period turns on the force-majeure proviso, the threshold is
+    checked under each reading of it, as the proviso's readings are derived.
+    """
+    measured = _delay(item, judged)
+    delay = measured if isinstance(measured, timedelta) else None
+    clause = item.condition.clause
+    if isinstance(measured, MissingFact):
+        reason = f"the Scenario does not state {measured.fact}"
+        return _undetermined(item, Reason.MISSING_FACT, reason, clause, delay)
+    if isinstance(measured, NothingCounts):
+        reason = f"no replacement flight counts toward the delay period: {measured.why}"
+        return _not_paid(item, reason, clause, delay)
+    if delay is not None and _under_threshold(delay, item.condition):
+        return _not_paid(item, _threshold_not_met(item.condition, delay), clause, delay)
     for j in judged:
         if j.provision.kind is not ProvisionKind.EXCLUSION and _settled(j.judgement, met=False):
             return _not_paid(
-                item, f"outside the {j.provision.kind}: {j.provision.text}", j.provision.clause
+                item,
+                f"outside the {j.provision.kind}: {j.provision.text}",
+                j.provision.clause,
+                delay,
             )
     for j in judged:
         if j.provision.kind is ProvisionKind.EXCLUSION and _applies(j) is True:
-            return _not_paid(item, f"the exclusion applies: {j.provision.text}", j.provision.clause)
+            return _not_paid(
+                item, f"the exclusion applies: {j.provision.text}", j.provision.clause, delay
+            )
 
     unsettled = _unsettled(judged)
     needs = [u for u in unsettled if isinstance(u.judgement, NeedsFact)]
@@ -418,16 +500,28 @@ def _from_judgements(item: _ConditionIncident, judged: tuple[_Judged, ...]) -> C
                 if isinstance(u.judgement, NeedsFact)
             ),
             needs[0].provision.clause,
+            delay,
         )
     turning = [u for u in unsettled if isinstance(u.judgement, TurnsOnCause)]
     if turning:
+        provisions = [_turning(item, judged, u, turning) for u in turning]
+        if measured is None:
+            # The delay period turns on the force-majeure proviso: cite the rule too.
+            proviso = next(
+                p
+                for u, p in zip(turning, provisions, strict=True)
+                if u.in_proviso and judged[u.index].force_majeure
+            )
+            rule = TurningProvision(DELAY_PERIOD_RULE, FORCE_MAJEURE_RULE, clause, proviso.readings)
+            provisions.insert(0, rule)
         return _undetermined(
             item,
             Reason.CAUSE_AMBIGUOUS,
             "turns on how the Cause is classified, under "
-            + "; ".join(f"the {u.provision.kind}: {u.provision.text}" for u in turning),
-            turning[0].provision.clause,
-            tuple(_turning(item, judged, u, turning) for u in turning),
+            + "; ".join(f"the {p.kind}: {p.text}" for p in provisions),
+            provisions[0].clause,
+            delay,
+            tuple(provisions),
         )
     silent = [u for u in unsettled if isinstance(u.judgement, NotSettled)]
     if silent:
@@ -440,8 +534,28 @@ def _from_judgements(item: _ConditionIncident, judged: tuple[_Judged, ...]) -> C
                 if isinstance(u.judgement, NotSettled)
             ),
             silent[0].provision.clause,
+            delay,
         )
-    return _paid(item)
+    assert delay is not None  # an open proviso leaves the outcome undetermined above
+    return _paid(item, delay)
+
+
+def _delay(item: _ConditionIncident, judged: tuple[_Judged, ...]) -> Measured | None:
+    """The delay period under the judgements given; None while it turns on the
+    force-majeure proviso, which is then open or not yet judged."""
+    if item.force_majeure_delay is None:
+        return item.delay
+    shared = next((j for j in judged if j.force_majeure), None)
+    if shared is None:
+        return None
+    if _settled(shared.judgement, met=False):
+        return item.delay
+    proviso = shared.proviso.judgement if shared.proviso else None
+    if _settled(proviso, met=True):
+        return item.force_majeure_delay
+    if _settled(proviso, met=False):
+        return item.delay
+    return None
 
 
 def _applies(exclusion: _Judged) -> bool | None:
@@ -490,7 +604,12 @@ def _turning(
         outcome = _from_judgements(item, settled)
         readings.append(
             ReadingOutcome(
-                reading.cause, outcome.verdict, outcome.grounds, outcome.clause, outcome.reason
+                reading.cause,
+                outcome.verdict,
+                outcome.grounds,
+                outcome.clause,
+                outcome.reason,
+                outcome.delay,
             )
         )
     p = provision.provision
@@ -513,9 +632,14 @@ def _settled(judgement: Judgement | None, met: bool | None = None) -> bool:
     return isinstance(judgement, Settled) and (met is None or judgement.met is met)
 
 
-def _not_paid(item: _ConditionIncident, grounds: str, clause: ClauseRef) -> ConditionOutcome:
+def _not_paid(
+    item: _ConditionIncident,
+    grounds: str,
+    clause: ClauseRef,
+    delay: Measured | None,
+) -> ConditionOutcome:
     return ConditionOutcome(
-        item.condition.key, item.incident, Verdict.NOT_PAID, grounds, clause, item.delay
+        item.condition.key, item.incident, Verdict.NOT_PAID, grounds, clause, _shown(delay)
     )
 
 
@@ -524,6 +648,7 @@ def _undetermined(
     reason: Reason,
     grounds: str,
     clause: ClauseRef,
+    delay: Measured | None,
     turns_on: tuple[TurningProvision, ...] = (),
 ) -> ConditionOutcome:
     return ConditionOutcome(
@@ -532,25 +657,29 @@ def _undetermined(
         Verdict.UNDETERMINED,
         grounds,
         clause,
-        item.delay,
+        _shown(delay),
         reason=reason,
         turns_on=turns_on,
     )
 
 
-def _paid(item: _ConditionIncident) -> ConditionOutcome:
+def _shown(delay: Measured | None) -> timedelta | None:
+    """The delay period an outcome shows: one code measured, the same under every reading."""
+    return delay if isinstance(delay, timedelta) else None
+
+
+def _paid(item: _ConditionIncident, delay: timedelta) -> ConditionOutcome:
     condition = item.condition
-    assert item.delay is not None
     steps = None
-    grounds = f"a delay of {_duration(item.delay)}"
+    grounds = f"a delay of {_duration(delay)}"
     if condition.benefit_type is BenefitType.PROGRESSIVE and condition.step_hours:
-        steps = item.delay // timedelta(hours=condition.step_hours)
+        steps = delay // timedelta(hours=condition.step_hours)
         noun = "step" if steps == 1 else "steps"
         grounds += f": {steps} full {noun} of {condition.step_hours:g} hours"
     elif condition.benefit_type is BenefitType.ONE_OFF:
         grounds += ": one payment"
     return ConditionOutcome(
-        condition.key, item.incident, Verdict.PAID, grounds, condition.clause, item.delay, steps
+        condition.key, item.incident, Verdict.PAID, grounds, condition.clause, delay, steps
     )
 
 

@@ -54,6 +54,25 @@ def test_list_policies_says_when_no_title_or_wording_was_found(
     )
 
 
+def test_list_policies_labels_each_rider_with_its_parent(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main(["list-policies", str(FIXTURES / "cathay-old-hsiang-le-you.txt")])
+
+    out = capsys.readouterr().out
+    assert out.startswith(
+        "1. 國泰產物享樂遊海外旅行綜合保險\n"
+        "   pages 37–44, suggested wording: old\n"
+        "   10 Clauses: 第一條–第五條, 第十八條, 第二十七條, 第三十條–第三十二條\n"
+        "2. 國泰產物享樂遊海外旅行綜合保險寵物寄宿延長補償保險金附加條款\n"
+        "   rider of 國泰產物享樂遊海外旅行綜合保險\n"
+        "   page 55, no suggested wording (no flight-delay exclusions)\n"
+        "   1 Clause: 第一條\n"
+        "3. 國泰產物傷害保險恐怖主義行為保險限額給付附加條款\n"
+        "   rider of no policy named in the document\n"
+    )
+
+
 def test_import_writes_a_draft_workbook_and_says_how_to_confirm_it(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -159,3 +159,7 @@ class Exclusion:
     proviso: str | None
     concerns_cause: bool
     clause: ClauseRef
+
+    def applies_to_condition(self, condition: Condition) -> bool:
+        """Whether "applies to" names the Condition: by its key, its Benefit, or all."""
+        return bool({condition.key, str(condition.benefit), ALL}.intersection(self.applies_to))

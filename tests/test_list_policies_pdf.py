@@ -16,9 +16,11 @@ from travel_claims.policies import Clause, Policy, Wording
 
 CLAUSES = Path(__file__).parents[1] / "data" / "clauses"
 CATHAY_NEW = CLAUSES / "cathay" / "travel-bundle.new-wording.pdf"
+CATHAY_OLD = CLAUSES / "cathay" / "travel-bundle.old-wording.pdf"
 FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE_SOURCES = {
     "cathay-new-": "cathay/travel-bundle.new-wording.pdf",
+    "cathay-old-": "cathay/travel-bundle.old-wording.pdf",
     "chungkuo-old-": "chungkuo/overseas-inconvenience.old-wording.pdf",
     "fubon-old-": "fubon/travel-bundle.old-wording.pdf",
     "shinkong-old-": "shinkong/overseas-inconvenience.old-wording.pdf",
@@ -71,6 +73,26 @@ def test_a_clause_running_from_the_left_column_into_the_right_is_whole_and_in_or
     assert re.search(r"合計新臺幣\s*2,000\s*元為限。\s*前二項所列費用僅限於", trip_change.text)
     assert trip_change.text.endswith("保險金額為\n限。")
     assert clause(hsiang_le_you, 34).heading.endswith("特別不保事項")
+
+
+def test_the_cathay_old_bundle_lists_each_policy_and_rider_and_not_its_contents_page() -> None:
+    policies = policies_in(present(CATHAY_OLD))
+
+    travel_accident = "國泰產物新旅行平安保障保險"
+    medical = "國泰產物新旅行平安保障傷害醫療及重大燒燙傷保險"
+    hsiang_le_you = "國泰產物享樂遊海外旅行綜合保險"
+    assert [(p.name, p.pages, p.parents if p.is_rider else None) for p in policies] == [
+        (travel_accident, (2, 18), None),
+        (medical, (19, 24), None),
+        (f"{travel_accident}恐怖主義行為保險給付附加條款", (25, 25), (travel_accident,)),
+        # The 附約 names its parents in its first Clause: 附加於…或…
+        ("國泰產物新海外突發疾病醫療健康保險附約 (甲型)", (26, 30), (travel_accident, medical)),
+        ("國泰產物新海外突發疾病醫療健康保險附約 (乙型)", (32, 36), (travel_accident, medical)),
+        (hsiang_le_you, (37, 54), None),
+        (f"{hsiang_le_you}寵物寄宿延長補償保險金附加條款", (55, 56), (hsiang_le_you,)),
+        ("國泰產物傷害保險恐怖主義行為保險限額給付附加條款", (57, 58), ()),
+        (f"{hsiang_le_you}班機延誤取代或免檢附部分理賠文件附加條款", (59, 59), (hsiang_le_you,)),
+    ]
 
 
 @pytest.mark.parametrize(

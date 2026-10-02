@@ -258,6 +258,25 @@ def test_an_exclusion_type_must_be_on_the_list_of_every_benefit_it_applies_to(
     ]
 
 
+def test_the_old_wording_rule_needs_the_first_replacement_exclusion_and_its_proviso(
+    tmp_path: Path,
+) -> None:
+    # The old-wording rule measures the delay to the next replacement flight
+    # when force majeure prevented taking the first: it takes that reading from
+    # the proviso of the first-replacement exclusion.
+    workbook, store = import_draft(tmp_path, wording=Wording.OLD)
+    confirm(workbook)
+    review(workbook, {"Exclusions!F4": None})
+
+    assert [str(p) for p in load_workbook(workbook, store=store).problems] == [
+        (
+            "Conditions!I5: the old-wording rule takes its force-majeure reading from the "
+            "proviso of a first replacement not taken exclusion, and no such exclusion with "
+            "a proviso applies to flight delay"
+        )
+    ]
+
+
 def test_amounts_rows_may_name_a_condition_or_all(tmp_path: Path) -> None:
     workbook, store = import_draft(tmp_path)
     confirm(workbook)

@@ -18,7 +18,7 @@ The actuary's working documents are unpublished drafts. They cannot go to a clou
 
 ## What it produces
 
-Both examples below were written by hand from the collected documents to show the intended output. The system does not produce them yet.
+Both examples below were written by hand from the collected documents to show the intended output. The system produces the Verdict matrix, for flight delay in both wordings; the Alignment table is not built yet.
 
 ### 1. Alignment table
 
@@ -278,6 +278,24 @@ uv run travel-claims list-policies data/clauses/cathay/travel-bundle.new-wording
 ...
 ```
 
+A table-of-contents page, which lists policy names with no Clauses under them, is not listed. A rider (附加條款, 附約) restarts its Clause numbering and is listed on its own, labelled with the policy it attaches to: the one its name extends, or else those its first Clause names. From the old-wording bundle:
+
+```
+...
+6. 國泰產物享樂遊海外旅行綜合保險
+   pages 37–54, suggested wording: old
+   82 Clauses: 第一條–第八十二條
+7. 國泰產物享樂遊海外旅行綜合保險寵物寄宿延長補償保險金附加條款
+   rider of 國泰產物享樂遊海外旅行綜合保險
+   pages 55–56, no suggested wording (no flight-delay exclusions)
+   4 Clauses: 第一條–第四條
+8. 國泰產物傷害保險恐怖主義行為保險限額給付附加條款
+   rider of no policy named in the document
+   pages 57–58, no suggested wording (no flight-delay exclusions)
+   7 Clauses: 第一條–第七條
+...
+```
+
 The document can also be page text already extracted from a PDF, with a form feed between pages, as `scripts/capture_fixture.py` or `pdftotext` writes it.
 
 ### Importing a Product and confirming its workbook
@@ -343,7 +361,41 @@ When the outcome cannot be decided, the cell says why: the Scenario lacks a fact
       the exclusion applies: 被保險人未搭乘航空業者所提供之第一班替代交通工具。
 ```
 
-`--export verdicts.xlsx` also writes the Verdict matrix, the facts read and the per-Condition breakdown, with a row per reading, to a new Excel file. Flight delay in the new wording is judged so far.
+`--export verdicts.xlsx` also writes the Verdict matrix, the facts read and the per-Condition breakdown, with a row per reading, to a new Excel file. Flight delay is judged so far, in both wordings.
+
+### Old and new wording side by side
+
+Import the old wording of a Product under the same Product name, and give both workbooks to `judge`: each Wording version is its own cell. Clauses are stored per Product and Wording version, so the old and the new 第三十條 never collide in the Clause store, in Load's checks or in the citations:
+
+```bash
+uv run travel-claims import data/clauses/cathay/travel-bundle.old-wording.pdf \
+  --policy 6 --product 享樂遊 --wording old
+uv run travel-claims judge --scenario "……" workbooks/享樂遊.old.xlsx workbooks/享樂遊.new.xlsx
+```
+
+`--pages 37-54` picks the policy by its pages instead, when its boundaries cannot be found.
+
+The old wording measures a flight delay differently: when force majeure (不可抗力) prevented the insured from taking the first replacement flight, the delay runs to the next one, as the proviso of its first-replacement exclusion (第三十一條 四) says; and when a cancelled flight gets no replacement from the airline, one the insured arranges within the policy period counts. Code measures the delay under each reading of that proviso, so the hours themselves can turn on the Cause. When the insured misses a first replacement leaving 3 hours late and takes the next, 6 hours late:
+
+```
+享樂遊, old wording: undetermined, Cause ambiguous
+  flight delay, incident 1: undetermined, Cause ambiguous (第三十條)
+    turns on how the Cause is classified, under the delay-period rule: the delay runs to the next replacement flight if force majeure prevented the insured from taking the first; the proviso: 但被保險人因不可抗力因素致無法搭乘航空業者所提供之第一班替代交通工具者，不在此限。
+    if the delay-period rule of 第三十條 is read as 不可抗力: paid (第三十條)
+      a delay of 6 h 0 min: 1 full step of 4 hours
+    if the delay-period rule of 第三十條 is read as 非不可抗力: not paid (第三十條)
+      a delay of 3 h 0 min, under the threshold of 4 hours
+    if the proviso of 第三十一條 四 is read as 不可抗力: paid (第三十條)
+      a delay of 6 h 0 min: 1 full step of 4 hours
+    if the proviso of 第三十一條 四 is read as 非不可抗力: not paid (第三十條)
+      a delay of 3 h 0 min, under the threshold of 4 hours
+
+享樂遊, new wording: not paid
+  flight delay, incident 1: not paid (第三十條)
+    a delay of 3 h 0 min, under the threshold of 4 hours
+```
+
+A threshold not met, or an exclusion that applies, decides the outcome only when it holds under every reading. Load requires an old-wording Condition to have a first-replacement exclusion with its proviso, since the delay-period rule takes its readings from it.
 
 ### Running 享樂遊 end to end on the real model
 

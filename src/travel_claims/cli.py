@@ -244,8 +244,12 @@ def _describe(index: int, policy: Policy) -> str:
     clauses = f"{_count(len(policy.clauses), 'Clause')}: {_clause_ranges(policy.clause_numbers)}"
     prefix = f"{index}. "
     indent = " " * len(prefix)
+    rider = ""
+    if policy.is_rider:
+        parents = " or ".join(policy.parents) or "no policy named in the document"
+        rider = f"{indent}rider of {parents}\n"
     return (
-        f"{prefix}{policy.name or '(no title found)'}\n"
+        f"{prefix}{policy.name or '(no title found)'}\n{rider}"
         f"{indent}{_pages(policy)}, {wording}\n{indent}{clauses}"
     )
 

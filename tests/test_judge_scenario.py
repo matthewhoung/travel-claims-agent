@@ -521,6 +521,7 @@ def test_the_road_closure_scenario_turns_on_the_cause_and_shows_both_readings(
                             verdict=Verdict.PAID,
                             grounds="a delay of 5 h 0 min: 1 full step of 4 hours",
                             clause=ClauseRef(30),
+                            delay=timedelta(hours=5),
                         ),
                         ReadingOutcome(
                             cause="非不可抗力",
@@ -530,6 +531,7 @@ def test_the_road_closure_scenario_turns_on_the_cause_and_shows_both_readings(
                                 "被保險人未搭乘航空業者所提供之第一班替代交通工具。"
                             ),
                             clause=ClauseRef(31, "五"),
+                            delay=timedelta(hours=5),
                         ),
                     ),
                 ),

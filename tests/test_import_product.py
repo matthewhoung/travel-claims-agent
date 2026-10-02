@@ -11,7 +11,7 @@ import openpyxl
 import pytest
 from openpyxl.worksheet.worksheet import Worksheet
 
-from travel_claims.app import CannotImport, import_product
+from travel_claims.app import CannotImport, import_product, load_workbook
 from travel_claims.clause_store import ClauseStore
 from travel_claims.conditions import Benefit
 from travel_claims.local_models import ClauseRole, Extraction
@@ -23,6 +23,7 @@ from hsiang_le_you import (
     FLIGHT_DELAY,
     TYPHOON,
     WILFUL_ACT,
+    confirm,
     import_draft,
 )
 from scripted_models import ScriptedModels
@@ -282,6 +283,31 @@ def test_import_never_overwrites_a_workbook(tmp_path: Path) -> None:
     assert workbook.read_bytes() == b"a confirmed workbook"
     assert not models.extracted
     assert not models.indexed
+
+
+def test_another_wording_version_of_a_product_is_stored_beside_the_first(tmp_path: Path) -> None:
+    new, store = import_draft(tmp_path)
+    old, _ = import_draft(tmp_path, wording=Wording.OLD)
+
+    # Both are 第三十條, and neither replaced the other.
+    new_delay = next(c for c in store.clauses("享樂遊", Wording.NEW) if c.number == 30)
+    old_delay = next(c for c in store.clauses("享樂遊", Wording.OLD) if c.number == 30)
+    assert "次一班替代班機" in old_delay.text
+    assert "次一班替代班機" not in new_delay.text
+    assert store.products() == ["享樂遊"]
+
+    book = openpyxl.load_workbook(old)
+    [condition] = table(book["Conditions"], header_row=4)
+    assert condition["Wording version"] == "old"
+    assert condition["Delay-period rule"] == "old-wording rule"
+    assert [(e["Exclusion type"], e["Clause reference"]) for e in table(book["Exclusions"])] == [
+        ("other", "第四條 二"),
+        ("strike at purchase", "第三十一條 二"),
+        ("first replacement not taken", "第三十一條 四"),
+    ]
+    for workbook in (new, old):
+        confirm(workbook)
+        assert load_workbook(workbook, store=store).problems == ()
 
 
 def imported(directory: Path, models: ScriptedModels) -> openpyxl.Workbook:

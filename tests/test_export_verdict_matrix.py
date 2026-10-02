@@ -97,7 +97,7 @@ def test_the_verdict_matrix_exports_with_its_facts_and_breakdown(tmp_path: Path)
             None,
             "a delay of 5 h 0 min: 1 full step of 4 hours",
             "第三十條",
-            None,
+            timedelta(hours=5),
             None,
         ),
         (
@@ -111,7 +111,7 @@ def test_the_verdict_matrix_exports_with_its_facts_and_breakdown(tmp_path: Path)
             None,
             f"the exclusion applies: {first_replacement}",
             "第三十一條 五",
-            None,
+            timedelta(hours=5),
             None,
         ),
     ]

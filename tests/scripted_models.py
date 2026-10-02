@@ -36,6 +36,7 @@ class ScriptedModels:
         self.extracted: list[ExtractionRequest] = []
         self.scenarios: list[str] = []
         self.indexed: list[tuple[str, Wording, tuple[int, ...]]] = []
+        self.judged: list[JudgementRequest] = []
 
     def extract(self, request: ExtractionRequest) -> Extraction:
         self.extracted.append(request)
@@ -48,6 +49,7 @@ class ScriptedModels:
         return self._facts
 
     def judge(self, request: JudgementRequest) -> Judgement:
+        self.judged.append(request)
         provision = request.provision
         reference = str(provision.clause)
         for key in (provision.text, reference):

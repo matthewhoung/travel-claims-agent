@@ -96,7 +96,8 @@ def write_matrix(path: Path, matrix: VerdictMatrix) -> None:
         where = [cell.product, str(cell.wording)]
         for outcome in cell.outcomes:
             condition = [*where, outcome.condition, outcome.incident]
-            breakdown.append(
+            _breakdown_row(
+                breakdown,
                 [
                     *condition,
                     None,
@@ -107,13 +108,12 @@ def write_matrix(path: Path, matrix: VerdictMatrix) -> None:
                     str(outcome.clause),
                     outcome.delay,
                     outcome.steps,
-                ]
+                ],
             )
-            if outcome.delay is not None:
-                breakdown.cell(breakdown.max_row, _DELAY_COLUMN).number_format = "[h]:mm"
             for provision in outcome.turns_on:
                 for reading in provision.readings:
-                    breakdown.append(
+                    _breakdown_row(
+                        breakdown,
                         [
                             *condition,
                             f"the {provision.kind} of {provision.clause}",
@@ -122,11 +122,19 @@ def write_matrix(path: Path, matrix: VerdictMatrix) -> None:
                             _text(reading.reason),
                             reading.grounds,
                             str(reading.clause),
-                        ]
+                            reading.delay,
+                        ],
                     )
 
     path.parent.mkdir(parents=True, exist_ok=True)
     book.save(path)
+
+
+def _breakdown_row(sheet: Worksheet, values: list[object]) -> None:
+    """A row of the breakdown, its delay period shown in hours and minutes."""
+    sheet.append(values)
+    if sheet.cell(sheet.max_row, _DELAY_COLUMN).value is not None:
+        sheet.cell(sheet.max_row, _DELAY_COLUMN).number_format = "[h]:mm"
 
 
 def _heading(sheet: Worksheet, columns: tuple[str, ...]) -> None:

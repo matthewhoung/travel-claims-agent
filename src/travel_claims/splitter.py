@@ -9,7 +9,7 @@ flight-delay exclusions.
 import re
 import unicodedata
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal, cast
 
 from travel_claims.numerals import parse_numeral
@@ -59,6 +59,7 @@ _ITEM = re.compile(r"^(?:[一二三四五六七八九十]+、|[（(][一二三�
 _TITLE_ENDING = re.compile(
     r"(?:保險|附加條款|附約)\s*(?:[（(][^（()）]*[）)]|[-－—]\s*\w{1,4}型)?$"
 )
+_RIDER_ENDING = re.compile(r"(?:附加條款|附約)\s*(?:[（(][^（()）]*[）)]|[-－—]\s*\w{1,4}型)?$")
 _NOT_IN_TITLE = re.compile(r"[，。；：、]")
 # A title can wrap over this many lines. When it does, its first line names the
 # insurer, such as 國泰產物 or 和泰產物, or its last line is a short tail.
@@ -149,7 +150,37 @@ def split_policies(pages: Sequence[str]) -> list[Policy]:
             policies[-1].clauses.append(draft)
     # A title followed by chapter headings and no Clause, as on a table of
     # contents, is not a policy.
-    return [_policy(draft) for draft in policies if draft.clauses]
+    return _with_parents([_policy(draft) for draft in policies if draft.clauses])
+
+
+def _with_parents(policies: list[Policy]) -> list[Policy]:
+    """Label each rider with the policies of the document it attaches to.
+
+    Those whose name its own name extends, the longest first; failing that,
+    those its first Clause names, in the order named.
+    """
+    names = sorted(
+        {p.name for p in policies if p.name and not _RIDER_ENDING.search(p.name)},
+        key=len,
+        reverse=True,
+    )
+    labelled = []
+    for policy in policies:
+        if policy.name is None or not _RIDER_ENDING.search(policy.name):
+            labelled.append(policy)
+            continue
+        parents = [name for name in names if policy.name.startswith(name)][:1]
+        if not parents:
+            text = policy.clauses[0].text.replace("\n", "")
+            named: list[tuple[int, str]] = []
+            for name in names:
+                # Blank out a name once found, so that a shorter name inside it is not found too.
+                if (at := text.find(name)) >= 0:
+                    named.append((at, name))
+                    text = text.replace(name, "\0" * len(name))
+            parents = [name for _, name in sorted(named)]
+        labelled.append(replace(policy, is_rider=True, parents=tuple(parents)))
+    return labelled
 
 
 def _no_numbers_yet() -> dict[_Kind, int]:

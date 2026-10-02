@@ -138,6 +138,7 @@ def load(path: Path, store: ClauseStore) -> Loaded:
         for row in exclusion_rows
         if (exclusion := _exclusion(row, product, targets, problems)) is not None
     ]
+    _force_majeure_readings(condition_rows, conditions, exclusions, problems)
     _amounts(tables[AMOUNTS].rows, condition_rows, problems)
 
     extracted_fields, changed_fields = _changes(
@@ -290,6 +291,36 @@ def _exclusion(
         clause=fields.clause("Clause reference"),
     )
     return exclusion if fields.valid else None
+
+
+def _force_majeure_readings(
+    rows: list[Row],
+    conditions: list[Condition],
+    exclusions: list[Exclusion],
+    problems: list[Problem],
+) -> None:
+    """The old-wording rule runs the delay to the next replacement flight when force
+    majeure prevented taking the first, as the first-replacement exclusion's proviso
+    says; judging takes that reading from the proviso's judgement."""
+    row_of = {_text(row.values.get("Condition key")): row for row in rows}
+    for condition in conditions:
+        if condition.delay_period_rule is not DelayPeriodRule.OLD:
+            continue
+        if not any(
+            e.type is ExclusionType.FIRST_REPLACEMENT_NOT_TAKEN
+            and e.proviso is not None
+            and e.applies_to_condition(condition)
+            for e in exclusions
+        ):
+            problems.append(
+                Problem(
+                    CONDITIONS,
+                    row_of[condition.key].cell("Delay-period rule"),
+                    f"the {DelayPeriodRule.OLD} takes its force-majeure reading from the "
+                    f"proviso of a {ExclusionType.FIRST_REPLACEMENT_NOT_TAKEN} exclusion, and "
+                    f"no such exclusion with a proviso applies to {condition.key}",
+                )
+            )
 
 
 def _amounts(rows: list[Row], condition_rows: list[Row], problems: list[Problem]) -> None:

@@ -1,11 +1,13 @@
-"""享樂遊 in the new wording, as the tests import it.
+"""享樂遊 in the new wording, and in the old, as the tests import it.
 
-The fixture holds its general provisions and its flight-delay Clauses,
-captured from the new-wording bundle. The local models are scripted to
-extract the flight-delay Condition, two of its exclusions and one general
-exclusion.
+Each fixture holds its general provisions and its flight-delay Clauses,
+captured from the new- and old-wording bundles. The local models are
+scripted to extract the flight-delay Condition, two of its exclusions and one
+general exclusion. The old wording has no typhoon exclusion: its 第三十一條 二
+is the strike exclusion, and its first-replacement exclusion is 第三十一條 四.
 """
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -33,6 +35,9 @@ from travel_claims.policies import Wording
 from scripted_models import ScriptedModels
 
 FIXTURE = Path(__file__).parent / "fixtures" / "cathay-new-general-provisions.txt"
+# The old-wording bundle's contents page, 享樂遊 on pages 37 to 54, and three riders.
+OLD_FIXTURE = Path(__file__).parent / "fixtures" / "cathay-old-hsiang-le-you.txt"
+OLD_PAGES = (37, 54)
 
 FLIGHT_DELAY = ExtractedCondition(
     covered_event="scheduled flight departs 4 hours or more late",
@@ -68,21 +73,43 @@ EXTRACTIONS = {
     31: Extraction(exclusions=(TYPHOON, FIRST_REPLACEMENT)),
 }
 
+OLD_STRIKE = ExtractedExclusion(
+    type=ExclusionType.STRIKE,
+    text="要保人或被保險人向本公司申請訂立保險契約時，已宣布或已發生罷工或工運活動。",
+    concerns_cause=False,
+    item="二",
+)
+# The old wording's 第三十一條 四 has the same proviso, word for word, as the new 五.
+OLD_FIRST_REPLACEMENT = replace(FIRST_REPLACEMENT, item="四")
 
-def import_draft(directory: Path, models: ScriptedModels | None = None) -> tuple[Path, ClauseStore]:
-    """Import 享樂遊 in the new wording; the draft workbook and the Clause store.
+OLD_EXTRACTIONS = {
+    4: Extraction(exclusions=(WILFUL_ACT,)),
+    5: Extraction(policy_period="the dates and times on the policy schedule"),
+    30: Extraction(conditions=(FLIGHT_DELAY,)),
+    31: Extraction(exclusions=(OLD_STRIKE, OLD_FIRST_REPLACEMENT)),
+}
 
-    Extraction answers with EXTRACTIONS unless `models` is given.
+
+def import_draft(
+    directory: Path, models: ScriptedModels | None = None, wording: Wording = Wording.NEW
+) -> tuple[Path, ClauseStore]:
+    """Import 享樂遊 in a Wording version; the draft workbook and the Clause store.
+
+    Both Wording versions go to the same Clause store in `directory`.
+    Extraction answers with EXTRACTIONS, or OLD_EXTRACTIONS, unless `models`
+    is given. The old wording is chosen from its bundle by page range.
     """
-    workbook = directory / "享樂遊.new.xlsx"
+    workbook = directory / f"享樂遊.{wording}.xlsx"
     store = ClauseStore(directory / "store")
+    old = wording is Wording.OLD
     import_product(
-        FIXTURE,
+        OLD_FIXTURE if old else FIXTURE,
         product="享樂遊",
-        wording=Wording.NEW,
+        wording=wording,
         workbook=workbook,
         store=store,
-        models=models or ScriptedModels(extractions=EXTRACTIONS),
+        models=models or ScriptedModels(extractions=OLD_EXTRACTIONS if old else EXTRACTIONS),
+        pages=OLD_PAGES if old else None,
     )
     return workbook, store
 
@@ -110,11 +137,13 @@ POLICY_PERIOD = (
     datetime(2026, 7, 14, 23, 59, tzinfo=TAIPEI),
 )
 
-# The covered event and its requirements are met, and no exclusion applies.
+# The covered event and its requirements are met, and no exclusion applies,
+# in either Wording version.
 NOTHING_APPLIES: dict[str, Judgement] = {
     "第三十條": Settled(met=True),
     "第四條 二": Settled(met=False),
     "第三十一條 二": Settled(met=False),
+    "第三十一條 四": Settled(met=False),
     "第三十一條 五": Settled(met=False),
 }
 
